@@ -1,0 +1,23 @@
+{
+  "name": "repo-intel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Deterministic, offline, read-only repository intelligence exporter. Walks any repository via --root and emits a sanitized evidence bundle (files, git, configuration, delivery, planning, product) for grounding architecture analysis.",
+  "scripts": {
+    "export": "node export.mjs",
+    "test": "vitest run",
+    "test:sanitize": "vitest run sanitize.test.mjs",
+    "test:collectors": "vitest run collectors.test.mjs",
+    "test:configuration": "vitest run configuration.test.mjs",
+    "test:export": "vitest run export.test.mjs",
+    "test:planning-product": "vitest run planning-product.test.mjs"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

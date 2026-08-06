@@ -1,0 +1,18 @@
+{
+  "authorityDocuments": {
+    "AGENTS.md": "agent-guidance",
+    "README.md": "repository-overview",
+    "docs/code-map.md": "repository-reference"
+  },
+  "planningDirectories": [
+    "docs/decisions",
+    "docs/tasks",
+    "docs/roadmap",
+    "docs/plans",
+    "tasks",
+    "plans"
+  ],
+  "requiredAuthorityDocuments": [
+    "AGENTS.md"
+  ]
+}
