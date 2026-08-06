@@ -4,6 +4,8 @@
 
 # repo-intel
 
+> **Status: early / WIP (v0.1).** Usable, not frozen — CLI flags, collectors, and evidence shape may change. Treat as experimental.
+
 Deterministic, offline, read-only repository intelligence exporter. Walks a repository and emits
 a sanitized, portable evidence bundle — files, git state, configuration, delivery/CI surfaces,
 planning documents, and product signals — that can ground architecture analysis in an LLM
