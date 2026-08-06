@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none" role="img" aria-label="repo-intel">
+  <title>repo-intel</title>
+  <rect width="256" height="256" fill="#F1F5F9"/>
+  <path
+    d="M48 92 h58 c5 0 9-2 12-7 l9-14 c3-5 7-7 12-7 h77 c14 0 24 10 24 24 v98 c0 14-10 24-24 24 H48 c-14 0-24-10-24-24 V116 c0-14 10-24 24-24 z"
+    fill="#FFFFFF" stroke="#0F766E" stroke-width="8" stroke-linejoin="round"/>
+  <circle cx="108" cy="148" r="36" stroke="#0F766E" stroke-width="4"/>
+  <path
+    d="M74 148 c13-23 24-32 34-32 s21 9 34 32 c-13 23-24 32-34 32 s-21-9-34-32 z"
+    fill="#0B0E12" stroke="#0F766E" stroke-width="3.5" stroke-linejoin="round"/>
+  <circle cx="108" cy="148" r="12.5" fill="#FFFFFF"/>
+  <circle cx="108" cy="148" r="6.5" fill="#0B0E12"/>
+  <circle cx="112" cy="144.5" r="2.2" fill="#FFFFFF"/>
+  <path d="M142 148 H164 c12 0 18 7 18 18 V192" stroke="#0B0E12" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M182 166 H204" stroke="#0B0E12" stroke-width="6" stroke-linecap="round"/>
+  <path d="M182 192 H204" stroke="#0B0E12" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="182" cy="166" r="5" fill="#0B0E12"/>
+  <circle cx="204" cy="166" r="9.5" fill="#0F766E" stroke="#0B0E12" stroke-width="3.5"/>
+  <circle cx="204" cy="192" r="9.5" fill="#0F766E" stroke="#0B0E12" stroke-width="3.5"/>
+</svg>

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/banner-1280x640.png" alt="repo-intel" width="100%" />
+</p>
+
 # repo-intel
 
 Deterministic, offline, read-only repository intelligence exporter. Walks a repository and emits
