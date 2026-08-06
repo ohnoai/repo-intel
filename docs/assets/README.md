@@ -5,7 +5,7 @@ Canonical mark: folder + eye + git branch (full), folder + eye only at favicon s
 | File | Use |
 |------|-----|
 | `banner-1280x640.png` | README hero (2× / high-res; may exceed GitHub’s 1 MB social upload limit) |
-| `social-preview.png` | **GitHub Social preview** — 1280×640, under 1 MB |
+| `social-preview.png` | **GitHub Social preview** - 1280×640, under 1 MB |
 | `logo-512.png` | Square icon (org/profile avatar; repos have no per-repo avatar) |
 | `logo-light-512.png` | Light surfaces |
 | `logo.svg` / `logo-dark.svg` | Scalable mark (dark-friendly) |
