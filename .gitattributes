@@ -1,0 +1,8 @@
+# Normalize text in the index, but only force LF working-tree endings for repo
+# control/config files where CRLF churn has already caused noise.
+* text=auto
+
+.gitattributes text eol=lf
+.gitignore text eol=lf
+**/.gitignore text eol=lf
+*.toml text eol=lf
