@@ -1,26 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" role="img" aria-label="repo-intel">
-  <!--
-    Favicon v1.3 — 16/32 only
-    Honest cut: folder + eye. No branch.
-    Three metaphors do not fit 16px; two do.
-  -->
-  <title>repo-intel</title>
+ <!--
+ Favicon v1.3 - 16/32 only
+ Honest cut: folder + eye. No branch.
+ Three metaphors do not fit 16px; two do.
+ -->
+ <title>repo-intel</title>
 
-  <rect x="2.5" y="9" width="27" height="18.5" rx="3.5" fill="#EEF2F5" stroke="#2DD4BF" stroke-width="2.25"/>
-  <!-- tab -->
-  <path
-    d="M5.5 9 V6.8 c0-0.9 0.7-1.6 1.6-1.6 h5.8 c0.7 0 1.2 0.35 1.5 0.9 L15.5 9"
-    fill="#EEF2F5" stroke="#2DD4BF" stroke-width="2.25" stroke-linejoin="round"/>
+ <rect x="2.5" y="9" width="27" height="18.5" rx="3.5" fill="#EEF2F5" stroke="#2DD4BF" stroke-width="2.25"/>
+ <!-- tab -->
+ <path
+ d="M5.5 9 V6.8 c0-0.9 0.7-1.6 1.6-1.6 h5.8 c0.7 0 1.2 0.35 1.5 0.9 L15.5 9"
+ fill="#EEF2F5" stroke="#2DD4BF" stroke-width="2.25" stroke-linejoin="round"/>
 
-  <!-- Eye only — large, centered-ish, clean -->
-  <path
-    d="M8 18.5
-       c2.8-5 5.5-7 8-7
-       s5.2 2 8 7
-       c-2.8 5-5.5 7-8 7
-       s-5.2-2-8-7
-       z"
-    fill="#0B0E12"/>
-  <circle cx="16" cy="18.5" r="3.4" fill="#EEF2F5"/>
-  <circle cx="16" cy="18.5" r="1.8" fill="#0B0E12"/>
+ <!-- Eye only - large, centered-ish, clean -->
+ <path
+ d="M8 18.5
+ c2.8-5 5.5-7 8-7
+ s5.2 2 8 7
+ c-2.8 5-5.5 7-8 7
+ s-5.2-2-8-7
+ z"
+ fill="#0B0E12"/>
+ <circle cx="16" cy="18.5" r="3.4" fill="#EEF2F5"/>
+ <circle cx="16" cy="18.5" r="1.8" fill="#0B0E12"/>
 </svg>
