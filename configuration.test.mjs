@@ -276,8 +276,25 @@ describe("repository intelligence configuration", () => {
     expect(serialized).not.toContain("AKIAIOSFODNN7NOTREAL");
   });
 
-  it("preserves SliceBoard's shipped environment documentation", () => {
-    const result = collectConfiguration();
+  it("merges multi-line environment comments in sorted order and drops assignment-like lines", () => {
+    const { root } = createFixture();
+
+    writeFixtureFile(
+      root,
+      ".env.example",
+      [
+        "# Public origin that serves hosted share pages and social preview images.",
+        "# Falls back to the default origin when unset.",
+        "SHARE_PUBLIC_ORIGIN=https://fixture.test",
+        "",
+        "# Passkeys (WebAuthn). rpID must be a registrable suffix of every allowed",
+        "# origin. Defaults: rpID=fixture.test, origins the marketing + app domains.",
+        "# For local dev: PASSKEY_RP_ID=localhost, PASSKEY_ORIGINS=http://localhost:5173",
+        "PASSKEY_RP_ID=fixture.test",
+      ].join("\n"),
+    );
+
+    const result = collectConfiguration({ root });
     const shareOrigin = result.metadata.environmentVariables.find(
       (record) => record.name === "SHARE_PUBLIC_ORIGIN",
     );
@@ -285,10 +302,16 @@ describe("repository intelligence configuration", () => {
       (record) => record.name === "PASSKEY_RP_ID",
     );
 
+    // Multiple comment lines directly above a declaration all merge into
+    // that variable's descriptions, sorted alphabetically at output time
+    // (not source order) -- this fixture regression-tests that.
     expect(shareOrigin.descriptions).toEqual([
-      "Defaults to https://sliceboard.app when unset.",
-      "Public origin that serves hosted share pages (/s/:id) and OG images.",
+      "Falls back to the default origin when unset.",
+      "Public origin that serves hosted share pages and social preview images.",
     ]);
+    // Comment lines that look like assignments ("key=value") are dropped
+    // whole rather than redacted in place, even when embedded mid-sentence
+    // like "origin. Defaults: rpID=fixture.test, ..." above.
     expect(passkeyRpId.descriptions).toEqual([
       "Passkeys (WebAuthn). rpID must be a registrable suffix of every allowed",
     ]);
