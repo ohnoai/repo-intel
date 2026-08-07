@@ -11,6 +11,7 @@ afterEach(() => { while (fixtures.length) rmSync(fixtures.pop(), { recursive: tr
 
 function fixture() { const directory = mkdtempSync(join(tmpdir(), "sliceboard-planning-product-")); const root = join(directory, "repo"); mkdirSync(root); fixtures.push(directory); return root; }
 function write(root, path, content) { const file = join(root, ...path.split("/")); mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, content); }
+function writeProductConfig(root, product) { write(root, ".repo-intelligence.json", JSON.stringify({ product })); }
 
 describe("planning collector", () => {
   it("classifies authority, decisions, tasks, and roadmap metadata deterministically", () => {
@@ -89,31 +90,99 @@ describe("planning collector", () => {
 });
 
 describe("product collector", () => {
-  it("detects SliceBoard product signals and risk surfaces without exporting source", () => {
+  it("stays quiet in a repository that declares no product config, so --root works anywhere", () => {
     const root = fixture();
-    write(root, "src/SliceBoardApp.tsx", "import { PizzaWindowChart } from './chart'; const key = 'sliceboard-state'; const cloud = board_states; const revision = 1; function applyAmountToSlice() {}\n");
-    write(root, "src/entitlements.ts", "export const isPro = true; export const isPieLocked = true;\n");
+    write(root, "src/app.ts", "export const app = true;\n");
+
     const result = collectProduct({ root });
-    expect(result.metadata.product).toBe("SliceBoard");
-    expect(result.metadata.signals.map((signal) => signal.id)).toEqual(expect.arrayContaining(["budget-allocation", "pizza-visualization", "local-first-persistence", "cloud-sync", "billing-entitlements"]));
-    expect(result.metadata.riskSurfaces.map((risk) => risk.id)).toEqual(expect.arrayContaining(["budget-invariant", "cloud-concurrency", "entitlement-boundary", "sensitive-data-boundary"]));
-    expect(JSON.stringify(result)).not.toContain("function applyAmountToSlice");
+
+    expect(result.status).toBe("complete");
+    expect(result.metadata.product).toBeNull();
+    expect(result.metadata.signals).toEqual([]);
+    expect(result.metadata.riskSurfaces).toEqual([]);
+  });
+
+  it("detects configured product signals and risk surfaces without exporting source", () => {
+    const root = fixture();
+    writeProductConfig(root, {
+      name: "FixtureBoard",
+      signals: [
+        { id: "feature-panel", pattern: "FeaturePanel|feature_state" },
+        { id: "external-sync", pattern: "reconcileRemote" },
+        { id: "premium-tier", pattern: "isPremium|isFeatureLocked" },
+      ],
+      riskSurfaces: [
+        { id: "state-invariant", severity: "high", pattern: "feature_state|applyFeaturePatch" },
+        { id: "sync-concurrency", severity: "high", pattern: "reconcileRemote" },
+        { id: "premium-boundary", severity: "high", pattern: "isPremium|isFeatureLocked" },
+      ],
+    });
+    write(root, "src/FixtureApp.tsx", "import { FeaturePanel } from './panel'; const state = feature_state; const cloud = reconcileRemote; function applyFeaturePatch() {}\n");
+    write(root, "src/entitlements.ts", "export const isPremium = true; export const isFeatureLocked = true;\n");
+    const result = collectProduct({ root });
+    expect(result.metadata.product).toBe("FixtureBoard");
+    expect(result.metadata.signals.map((signal) => signal.id)).toEqual(expect.arrayContaining(["feature-panel", "external-sync", "premium-tier"]));
+    expect(result.metadata.riskSurfaces.map((risk) => risk.id)).toEqual(expect.arrayContaining(["state-invariant", "sync-concurrency", "premium-boundary"]));
+    expect(result.records[0].product).toBe("FixtureBoard");
+    expect(JSON.stringify(result)).not.toContain("function applyFeaturePatch");
+  });
+
+  it("reports product: null when configured signals never fire, even with a configured name", () => {
+    const root = fixture();
+    writeProductConfig(root, {
+      name: "FixtureBoard",
+      signals: [{ id: "feature-panel", pattern: "FeaturePanel" }],
+    });
+    write(root, "src/app.ts", "export const app = true;\n");
+
+    const result = collectProduct({ root });
+
+    expect(result.metadata.product).toBeNull();
+    expect(result.records[0].product).toBeNull();
+    expect(result.metadata.signals).toEqual([]);
+  });
+
+  it("drops signal and risk-surface entries with an invalid id, pattern, or severity", () => {
+    const root = fixture();
+    writeProductConfig(root, {
+      name: "FixtureBoard",
+      signals: [
+        { id: "Not Kebab Case", pattern: "FeaturePanel" },
+        { id: "unclosed-pattern", pattern: "(unclosed" },
+        { id: "feature-panel", pattern: "FeaturePanel" },
+      ],
+      riskSurfaces: [
+        { id: "bad-severity", severity: "critical", pattern: "FeaturePanel" },
+        { id: "state-invariant", severity: "high", pattern: "FeaturePanel" },
+      ],
+    });
+    write(root, "src/app.ts", "const app = FeaturePanel;\n");
+
+    const result = collectProduct({ root });
+
+    expect(result.metadata.signals.map((signal) => signal.id)).toEqual(["feature-panel"]);
+    expect(result.metadata.riskSurfaces.map((risk) => risk.id)).toEqual(["state-invariant"]);
+    expect(result.status).toBe("partial");
+    expect(result.warnings).toEqual(expect.arrayContaining([
+      "Product signal declared an invalid id.",
+      'Product signal "unclosed-pattern" pattern could not be compiled.',
+      'Product risk surface "bad-severity" declared an invalid severity.',
+    ]));
   });
 
   it("ignores nested Git worktrees when collecting product evidence", () => {
     const root = fixture();
-    write(root, "src/app.ts", "const app = 'sliceboard-state';\n");
+    writeProductConfig(root, { name: "FixtureBoard", signals: [{ id: "local-state", pattern: "fixture-local-state" }] });
+    write(root, "src/app.ts", "const app = 'fixture-local-state';\n");
     write(root, "nested-file/.git", "gitdir: ../.git/worktrees/nested-file\n");
-    write(root, "nested-file/hidden.ts", "const hidden = 'board_states';\n");
+    write(root, "nested-file/hidden.ts", "const hidden = 'fixture-local-state';\n");
     mkdirSync(join(root, "nested-directory/.git"), { recursive: true });
-    write(root, "nested-directory/hidden.ts", "const hidden = 'Stripe';\n");
+    write(root, "nested-directory/hidden.ts", "const hidden = 'fixture-local-state';\n");
 
     const result = collectProduct({ root });
 
     expect(result.records[0].inspectedSourceFiles).toBe(1);
-    expect(result.metadata.signals.flatMap((signal) => signal.evidencePaths)).not.toEqual(
-      expect.arrayContaining(["nested-file/hidden.ts", "nested-directory/hidden.ts"]),
-    );
+    expect(result.metadata.signals.flatMap((signal) => signal.evidencePaths)).toEqual(["src/app.ts"]);
   });
 
   it("reports partial evidence when the source collection cap truncates candidates", () => {
@@ -129,7 +198,8 @@ describe("product collector", () => {
 
   it("reports partial evidence when traversal depth truncates source candidates", () => {
     const root = fixture();
-    write(root, "a/b/c/d/e/f/deep.ts", "const deep = 'board_states';\n");
+    writeProductConfig(root, { name: "FixtureBoard", signals: [{ id: "local-state", pattern: "fixture-local-state" }] });
+    write(root, "a/b/c/d/e/f/deep.ts", "const deep = 'fixture-local-state';\n");
 
     const result = collectProduct({ root });
 
@@ -141,7 +211,8 @@ describe("product collector", () => {
 
   it("reports partial evidence when an oversized source file is omitted", () => {
     const root = fixture();
-    write(root, "src/oversized.ts", `const oversized = 'sliceboard-state';\n${"x".repeat(384 * 1024)}\n`);
+    writeProductConfig(root, { name: "FixtureBoard", signals: [{ id: "local-state", pattern: "fixture-local-state" }] });
+    write(root, "src/oversized.ts", `const oversized = 'fixture-local-state';\n${"x".repeat(384 * 1024)}\n`);
 
     const result = collectProduct({ root });
 
@@ -152,7 +223,7 @@ describe("product collector", () => {
   });
 
   it("reports unavailable repositories without touching external context", () => {
-    const result = collectProduct({ root: join(tmpdir(), "missing-sliceboard-product-fixture") });
+    const result = collectProduct({ root: join(tmpdir(), "missing-product-fixture") });
     expect(result.status).toBe("unavailable");
     expect(result.metadata.riskSurfaces).toEqual([]);
   });
