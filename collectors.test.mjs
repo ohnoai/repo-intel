@@ -363,6 +363,20 @@ gitDescribe("Git inventory", () => {
     expect(result.records).toContainEqual(
       expect.objectContaining({ subject: "initial inventory" }),
     );
+    expect(result.records[0].evidenceLabels).toEqual({
+      default: "observed_fact",
+      fields: { subject: "documented_intent" },
+    });
+    // No upstream is configured for this fixture, so ahead/behind/trackingBranch stay
+    // null and are labeled unresolved; every other metadata field is observed_fact.
+    expect(result.metadata.evidenceLabels).toEqual({
+      default: "observed_fact",
+      fields: {
+        ahead: "unresolved",
+        behind: "unresolved",
+        trackingBranch: "unresolved",
+      },
+    });
   });
 
   it("distinguishes staged, unstaged, and untracked changes without raw patches", () => {
@@ -424,11 +438,51 @@ gitDescribe("Git inventory", () => {
     expect(result.metadata.defaultRemote).toEqual({
       name: "origin",
       url: "https://example.invalid/owner/repo.git",
+      evidenceLabels: {
+        default: "observed_fact",
+        fields: { name: "mechanical_inference" },
+      },
     });
     expect(serialized).not.toContain(remoteUsername);
     expect(serialized).not.toContain(remotePassword);
     expect(serialized).not.toContain(remoteQuery);
     expect(serialized).not.toContain(email);
+  });
+
+  it("labels defaultRemote as unresolved when no remote is configured at all", () => {
+    const { root } = createFixture();
+    writeFixtureFile(root, "src/no-remote.ts", "export const noRemote = true;\n");
+    initializeRepository(root);
+
+    const result = collectGitInventory({ root });
+
+    expect(result.metadata.defaultRemote.name).toBeNull();
+    expect(result.metadata.defaultRemote.url).toBeNull();
+    expect(result.metadata.defaultRemote.evidenceLabels).toEqual({
+      default: "observed_fact",
+      fields: { name: "unresolved", url: "unresolved" },
+    });
+  });
+
+  it("labels defaultRemote.name mechanical_inference even when git config names the remote explicitly (V1-1)", () => {
+    // Pins the v1 simplification in docs/decisions/2026-08-07-evidence-labels.md §10.4:
+    // the target mapping (§6.2) would call this observed_fact because remote.pushDefault
+    // is a directly-read git config value, not a guess. v1 does not carry which precedence
+    // branch fired, so it rounds toward the more skeptical label unconditionally. Restoring
+    // the split is a deliberate, reviewed change against this test, not a silent one.
+    const { root } = createFixture();
+    writeFixtureFile(root, "src/remote.ts", "export const remote = true;\n");
+    initializeRepository(root);
+    runGit(root, ["remote", "add", "upstream", "https://example.invalid/owner/repo.git"]);
+    runGit(root, ["config", "remote.pushDefault", "upstream"]);
+
+    const result = collectGitInventory({ root });
+
+    expect(result.metadata.defaultRemote.name).toBe("upstream");
+    expect(result.metadata.defaultRemote.evidenceLabels).toEqual({
+      default: "observed_fact",
+      fields: { name: "mechanical_inference" },
+    });
   });
 
   it("redacts email addresses in commit subjects", () => {
@@ -530,6 +584,12 @@ gitDescribe("Git inventory", () => {
       "The diff base resolved to HEAD (no local main and no upstream branch); an empty diff summary is expected, not a failure.",
     );
     expect(result.metadata.diff.changedFiles).toEqual([]);
+    // Value-dependent case: a base that resolved to HEAD asserts nothing meaningful about
+    // the repository, so the whole `diff` subtree is unresolved rather than only `baseRef`.
+    expect(result.metadata.diff.evidenceLabels).toEqual({
+      default: "unresolved",
+      fields: {},
+    });
   });
 
   it("still honors an explicit --base ref over the merge-base default", () => {
@@ -576,6 +636,7 @@ gitDescribe("Git inventory", () => {
       baseRef: null,
       changedFiles: [],
       numstat: [],
+      evidenceLabels: { default: "unresolved", fields: {} },
     });
     // Non-diff collection is unaffected.
     expect(result.metadata.currentBranch).toBe("feature");
@@ -653,6 +714,41 @@ describe("Git collector failure handling", () => {
       deletions: 2,
     });
     expect(Number.isNaN(record.additions)).toBe(false);
+    // Not applicable, not failed: only the null field is unresolved.
+    expect(record.evidenceLabels).toEqual({
+      default: "observed_fact",
+      fields: { additions: "unresolved" },
+    });
+  });
+
+  it("labels repository.isRepositoryRoot unresolved when --show-toplevel fails inside a worktree", () => {
+    const { root } = createFixture();
+    writeFixtureFile(root, "src/toplevel.ts", "export const toplevel = true;\n");
+    initializeRepository(root);
+
+    // `--is-inside-work-tree` succeeds (we are inside a Git worktree) but
+    // `--show-toplevel` fails, which is the case this label is meant to cover: the
+    // repository-root status could not be determined, distinct from a definite true/false.
+    const failingToplevelRunner = (command, args, options) => {
+      if (args[0] === "rev-parse" && args.includes("--show-toplevel")) {
+        return {
+          ok: false,
+          status: 128,
+          stdout: "",
+          stderr: "fatal: fixture failure",
+          error: null,
+        };
+      }
+      return runCommand(command, args, options);
+    };
+
+    const result = collectGitInventory({ root, runner: failingToplevelRunner });
+
+    expect(result.metadata.repository.isRepositoryRoot).toBeNull();
+    expect(result.metadata.repository.evidenceLabels).toEqual({
+      default: "observed_fact",
+      fields: { isRepositoryRoot: "unresolved" },
+    });
   });
 
   it("returns unavailable output without local paths when Git is missing", () => {
@@ -670,6 +766,10 @@ describe("Git collector failure handling", () => {
       "Git is unavailable; Git inventory could not be collected.",
     );
     expect(serialized).not.toContain(normalizeRepositoryPath(root));
+    expect(result.metadata.evidenceLabels).toEqual({
+      default: "unresolved",
+      fields: {},
+    });
   });
 
   gitIt("returns unavailable output for a directory outside a Git repository", () => {
