@@ -67,3 +67,26 @@ assertion was changed from what shipped in sliceboard. The 105 focused tests tha
 2026-08-05 are expected to pass unchanged here, but this was **not independently re-run** as part of
 the extraction itself (files were transferred via the GitHub API, not a live `npm test` run in this
 repository) - verify with `npm test` here before relying on a current pass count.
+
+## Addendum (2026-08-07): `collect-product.mjs` generalized
+
+The "one non-generic collector" gap this decision documented (see Context and Decision above) is
+closed. `lib/collect-product.mjs` now reads a `product` section from a repository's own
+`.repo-intelligence.json` - `name`, `signals[]` (`id` + `pattern`), `riskSurfaces[]` (`id` +
+`severity` + `pattern`) - the same way `collect-planning.mjs` reads `authorityDocuments` /
+`planningDirectories` from it. With no config present (or no `product` key in it), the collector
+returns `metadata.product: null` and empty `signals`/`riskSurfaces`, so pointing `--root` at an
+unconfigured repository (`roster`, as of this writing) produces honest empty output instead of
+another project's detection noise.
+
+SliceBoard's own eight signals and six risk surfaces (`budget-allocation`, `pizza-visualization`,
+`Stripe`, `MAX_PIES`, etc.) moved out of the collector and into `ohnoai/sliceboard`'s own
+`.repo-intelligence.json` as the first real consumer of this config - proof the generalization
+actually works, not just that it degrades gracefully. In the same pass, the `metadata.product`
+hardcode noted as a confirmed low-severity defect in `03-current-state.md` (`Lows` row) was fixed:
+`metadata.product` and `records[0].product` now derive from the same value, populated only when a
+configured signal actually fires, rather than the metadata copy being a literal `"SliceBoard"`
+regardless of what the records array computed.
+
+`docs/README.md` and this repository's root `README.md` (`Known limitation` note) are updated
+alongside this addendum rather than left describing a gap that no longer exists.

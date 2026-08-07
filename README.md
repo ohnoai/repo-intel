@@ -69,6 +69,28 @@ see [`.repo-intelligence.json.example`](.repo-intelligence.json.example):
 Every declared path is forced through the same path sanitizer the collectors use internally, so a
 config file cannot point collection outside its own repository.
 
+The same file also drives the product collector, via a `product` key - with none present,
+`metadata.product` comes back `null` and no signals or risk surfaces fire:
+
+```json
+{
+ "product": {
+ "name": "ExampleProduct",
+ "signals": [
+ { "id": "example-feature", "pattern": "ExampleFeatureComponent|EXAMPLE_FEATURE_FLAG" }
+ ],
+ "riskSurfaces": [
+ { "id": "example-risk", "severity": "medium", "pattern": "dangerouslySetInnerHTML|eval\\(" }
+ ]
+ }
+}
+```
+
+Each signal/risk-surface `id` must be lowercase kebab-case, `pattern` a regular expression source
+(case-insensitive, bounded length), and `severity` one of `low`/`medium`/`high`; malformed entries
+are dropped with a warning rather than failing collection. `metadata.product` is only populated once
+at least one configured signal actually fires against the repository being scanned.
+
 ## Collectors
 
 | Collector | Emits |
@@ -80,11 +102,12 @@ config file cannot point collection outside its own repository.
 | planning | authority/decision/task document metadata, repository-agnostic via `.repo-intelligence.json` |
 | product | product signals + risk-surface detection via bounded source scans (paths only) |
 
-**Known limitation:** `lib/collect-product.mjs` is still tuned to SliceBoard specifically - 
-hardcoded `product: "SliceBoard"`, and signal patterns for things like `PizzaWindowChart`,
-`MAX_PIES`, and Stripe. Against any other repository it degrades gracefully (`metadata.product`
-comes back `null`, no signals fire) but doesn't yet detect anything meaningful there. Generalizing
-it - the same way the planning collector became configurable - is open work, not started.
+`lib/collect-product.mjs` is repository-agnostic, the same way the planning collector is: signal
+and risk-surface patterns come from a repository's own `.repo-intelligence.json` (see
+Configuration above). With no config present, `metadata.product` comes back `null` and no signals
+fire - pointing `--root` at an unconfigured repository produces honest empty output instead of
+another project's detection noise. SliceBoard's own signals/risks now live in its own
+`.repo-intelligence.json`, not in this collector.
 
 ## Privacy
 
@@ -96,11 +119,10 @@ content, so a redaction gap fails the write rather than silently shipping. Full 
 
 ## Status
 
-Not a finished v1. **105 focused tests pass** as of 2026-08-05 (sanitize 33, collectors 23,
-configuration 22, export 19, planning-product 8) - verified in `ohnoai/sliceboard` prior to
-extraction; run `npm test` here to reverify against this repository directly. Slices S3
-(warnings/observations split), S6 (schema v2), and S7 (test-coverage hardening) are still open - 
-see [`docs/04-remediation-plan.md`](docs/04-remediation-plan.md).
+Not a finished v1. **111 focused tests pass** as of 2026-08-07 (sanitize 33, collectors 23,
+configuration 22, export 19, planning-product 14), verified with `npm test` in this repository.
+Slices S3 (warnings/observations split), S6 (schema v2), and S7 (test-coverage hardening) are still
+open - see [`docs/04-remediation-plan.md`](docs/04-remediation-plan.md).
 
 ## Development
 

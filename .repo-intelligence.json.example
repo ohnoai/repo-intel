@@ -14,5 +14,14 @@
   ],
   "requiredAuthorityDocuments": [
     "AGENTS.md"
-  ]
+  ],
+  "product": {
+    "name": "ExampleProduct",
+    "signals": [
+      { "id": "example-feature", "pattern": "ExampleFeatureComponent|EXAMPLE_FEATURE_FLAG" }
+    ],
+    "riskSurfaces": [
+      { "id": "example-risk", "severity": "medium", "pattern": "dangerouslySetInnerHTML|eval\\(" }
+    ]
+  }
 }

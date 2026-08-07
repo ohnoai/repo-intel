@@ -47,7 +47,8 @@ authoritative and the repo is ground truth.**
 - Decision record (ADR): [`decisions/2026-08-05-repository-intelligence-exporter-branch-reconciliation.md`](decisions/2026-08-05-repository-intelligence-exporter-branch-reconciliation.md)
  - a branch-reconciliation record from while this still lived in SliceBoard, kept for history.
 - Decision record (ADR): [`decisions/2026-08-06-repository-intelligence-exporter-extraction.md`](decisions/2026-08-06-repository-intelligence-exporter-extraction.md)
- - this extraction, and why `collect-product.mjs` stayed SliceBoard-tuned.
+ - this extraction, why `collect-product.mjs` stayed SliceBoard-tuned at extraction time, and its
+ later addendum recording the generalization that removed that limitation.
 - The original build task record stayed behind in `ohnoai/sliceboard` at
  `docs/tasks/repository-intelligence-exporter.md` and was not moved here; it remains history in
  that repository. ⚠️ Its front-matter reads `status: complete`, which described a point-in-time
