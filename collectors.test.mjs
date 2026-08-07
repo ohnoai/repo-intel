@@ -8,6 +8,7 @@ import {
   mkdirSync,
   mkdtempSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
@@ -204,6 +205,14 @@ describe("repository file inventory", () => {
       skipReason: "binary-asset",
     });
     expect(asset).not.toHaveProperty("content");
+    expect(asset.evidenceLabels).toEqual({
+      default: "observed_fact",
+      fields: {
+        classification: "mechanical_inference",
+        isBinary: "mechanical_inference",
+        skipReason: "mechanical_inference",
+      },
+    });
   });
 
   gitIt("returns deterministically sorted file records", () => {
@@ -272,6 +281,67 @@ describe("repository file inventory", () => {
       "cache.tsbuildinfo",
     );
     expect(serialized).not.toContain(normalizeRepositoryPath(root));
+
+    const fallback = result.records.find((record) => record.path === "src/fallback.ts");
+    expect(fallback.evidenceLabels).toEqual({
+      default: "observed_fact",
+      fields: {
+        classification: "mechanical_inference",
+        isBinary: "mechanical_inference",
+        skipReason: "mechanical_inference",
+        tracked: "unresolved",
+      },
+    });
+    expect(result.metadata.evidenceLabels).toEqual({
+      default: "observed_fact",
+      fields: { tracking: "unresolved" },
+    });
+  });
+
+  it("labels a symbolic-link record's unresolved classification and isBinary", () => {
+    const { root } = createFixture();
+    writeFixtureFile(root, "target.txt", "target\n");
+
+    try {
+      symlinkSync(join(root, "target.txt"), join(root, "link.txt"), "file");
+    } catch {
+      return;
+    }
+
+    const result = collectRepositoryFiles({
+      root,
+      gitCommand: "sliceboard-fixture-git-not-found",
+    });
+    const link = result.records.find((record) => record.path === "link.txt");
+
+    expect(link).toBeDefined();
+    expect(link.classification).toBe("unknown");
+    expect(link.isBinary).toBeNull();
+    expect(link.skipReason).toBe("symbolic-link");
+    expect(link.evidenceLabels).toEqual({
+      default: "observed_fact",
+      fields: {
+        classification: "unresolved",
+        isBinary: "unresolved",
+        tracked: "unresolved",
+      },
+    });
+  });
+
+  it("labels the unavailable envelope's metadata as unresolved", () => {
+    const missingRoot = join(
+      tmpdir(),
+      `sliceboard-intelligence-missing-${Date.now()}`,
+    );
+
+    const result = collectRepositoryFiles({ root: missingRoot });
+
+    expect(result.status).toBe("unavailable");
+    expect(result.records).toEqual([]);
+    expect(result.metadata.evidenceLabels).toEqual({
+      default: "unresolved",
+      fields: {},
+    });
   });
 });
 
