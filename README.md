@@ -109,6 +109,15 @@ fire - pointing `--root` at an unconfigured repository produces honest empty out
 another project's detection noise. SliceBoard's own signals/risks now live in its own
 `.repo-intelligence.json`, not in this collector.
 
+## Evidence Labels
+
+Every value in the bundle is tagged with an `evidenceLabels` field indicating the trustworthiness of
+what that value asserts: `observed_fact` (read directly from durable artifacts), `documented_intent`
+(explicit statements in authority documents), `mechanical_inference` (derived from patterns), or
+`unresolved` (unable to classify). See
+[`docs/decisions/2026-08-07-evidence-labels.md`](docs/decisions/2026-08-07-evidence-labels.md) for
+the complete mapping per collector and the design rationale.
+
 ## Privacy
 
 The exporter never reads `.env` values, never exports binary content or raw diffs, and redacts
@@ -119,10 +128,10 @@ content, so a redaction gap fails the write rather than silently shipping. Full 
 
 ## Status
 
-Not a finished v1. **111 focused tests pass** as of 2026-08-07 (sanitize 33, collectors 23,
-configuration 22, export 19, planning-product 14), verified with `npm test` in this repository.
-Slices S3 (warnings/observations split), S6 (schema v2), and S7 (test-coverage hardening) are still
-open - see [`docs/04-remediation-plan.md`](docs/04-remediation-plan.md).
+Not a finished v1. **126 focused tests pass** as of 2026-08-09 (sanitize 33, collectors 28,
+configuration 28, export 20, planning-product 17), verified with `npx vitest run` in this repository.
+Slices S3 (warnings/observations split), S6 (schema v3 - evidence-labels claimed v2 first), and S7
+(test-coverage hardening) are still open - see [`docs/04-remediation-plan.md`](docs/04-remediation-plan.md).
 
 ## Development
 
