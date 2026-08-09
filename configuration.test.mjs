@@ -110,6 +110,44 @@ describe("repository intelligence configuration", () => {
     expect(typescriptRecord.references).toEqual(["tsconfig.app.json"]);
     expect(typescriptRecord.entryPoints.include).toEqual(["src"]);
     expect(serialized).not.toContain(lockOnlyValue);
+
+    // package.json: settings/scripts/dependencies/developmentDependencies are all
+    // documented_intent (R1 - authored, unverified claims); toolchain is the exception,
+    // since it is the tool's own filtered subset rather than something the file declares.
+    expect(packageRecord.evidenceLabels).toEqual({
+      default: "documented_intent",
+      fields: {
+        format: "mechanical_inference",
+        path: "observed_fact",
+        toolchain: "mechanical_inference",
+        type: "mechanical_inference",
+      },
+    });
+    // package-lock.json: a whole-file JSON parse of declared configuration (R2).
+    expect(lockRecord.evidenceLabels).toEqual({
+      default: "documented_intent",
+      fields: {
+        format: "mechanical_inference",
+        path: "observed_fact",
+        type: "mechanical_inference",
+      },
+    });
+    // tsconfig.json: the one real structural JSON/JSONC parse among this collector's
+    // record shapes (R2), so settings/references/entryPoints are documented_intent.
+    expect(typescriptRecord.evidenceLabels).toEqual({
+      default: "documented_intent",
+      fields: {
+        format: "mechanical_inference",
+        path: "observed_fact",
+        type: "mechanical_inference",
+      },
+    });
+    // metadata mirrors the package record: documented_intent by default, toolchain the
+    // sole mechanical_inference override.
+    expect(result.metadata.evidenceLabels).toEqual({
+      default: "documented_intent",
+      fields: { toolchain: "mechanical_inference" },
+    });
   });
 
   it("redacts command credentials and local paths in configuration and delivery scripts", () => {
@@ -470,6 +508,8 @@ describe("repository intelligence configuration", () => {
     writeFixtureFile(root, "vite.config.ts", "export default {};\n");
 
     const result = collectConfiguration({ root });
+    const packageRecord = result.records.find((record) => record.path === "package.json");
+    const viteRecord = result.records.find((record) => record.path === "vite.config.ts");
 
     expect(result.status).toBe("partial");
     expect(result.records).toContainEqual(
@@ -480,6 +520,24 @@ describe("repository intelligence configuration", () => {
     );
     expect(result.warnings.some((warning) => warning.includes("Malformed JSON"))).toBe(true);
     expect(result.warnings.some((warning) => warning.includes("Malformed JSON-like"))).toBe(true);
+    // A malformed record extracted nothing, so the record's default drops to unresolved;
+    // only path/type/format/malformed - assigned from the filename, not the file's
+    // contents - stay claimed.
+    expect(packageRecord.evidenceLabels).toEqual({
+      default: "unresolved",
+      fields: {
+        format: "mechanical_inference",
+        malformed: "observed_fact",
+        path: "observed_fact",
+        type: "mechanical_inference",
+      },
+    });
+    // A script config (vite.config.ts) is regex/line-scanner output throughout (R2):
+    // mechanical_inference by default, with only path claimed as observed.
+    expect(viteRecord.evidenceLabels).toEqual({
+      default: "mechanical_inference",
+      fields: { path: "observed_fact" },
+    });
   });
 
   it("recognizes TOML array tables and clears malformed section context", () => {
@@ -511,6 +569,104 @@ describe("repository intelligence configuration", () => {
       "redirects.to",
     ]);
     expect(netlify.malformed).toBe(true);
+    // Malformed TOML still carried partial settings from the line scanner, but per the
+    // malformed rule those parsed-content fields become unresolved rather than the
+    // record's usual mechanical_inference - nothing was authoritatively extracted.
+    expect(netlify.evidenceLabels).toEqual({
+      default: "unresolved",
+      fields: {
+        format: "mechanical_inference",
+        malformed: "observed_fact",
+        path: "observed_fact",
+        type: "mechanical_inference",
+      },
+    });
+  });
+
+  it("labels a well-formed TOML record as mechanical_inference throughout (line scanner, not a real parser)", () => {
+    const { root } = createFixture();
+
+    writeFixtureFile(
+      root,
+      "netlify.toml",
+      ["[build]", 'command = "npm run build"'].join("\n"),
+    );
+
+    const result = collectConfiguration({ root });
+    const netlify = result.records.find((record) => record.path === "netlify.toml");
+
+    expect(netlify.malformed).toBe(false);
+    expect(netlify.evidenceLabels).toEqual({
+      default: "mechanical_inference",
+      fields: { malformed: "observed_fact", path: "observed_fact" },
+    });
+  });
+
+  it("labels environment-variable evidence per field, including the value-dependent 'unknown' classification", () => {
+    const { root } = createFixture();
+
+    writeFixtureFile(
+      root,
+      ".env.example",
+      ["# A description of this variable.", "UNREFERENCED_VALUE=your-placeholder"].join("\n"),
+    );
+
+    const result = collectConfiguration({ root });
+    const unreferenced = result.metadata.environmentVariables.find(
+      (record) => record.name === "UNREFERENCED_VALUE",
+    );
+
+    // Never referenced anywhere, so classification falls through to the "unknown"
+    // sentinel - which R3 says is unresolved, not mechanical_inference like the field
+    // normally is.
+    expect(unreferenced.classification).toBe("unknown");
+    expect(unreferenced.evidenceLabels).toEqual({
+      default: "mechanical_inference",
+      fields: {
+        classification: "unresolved",
+        declarations: "observed_fact",
+        descriptions: "documented_intent",
+        name: "observed_fact",
+      },
+    });
+  });
+
+  it("labels a referenced environment variable's classification as mechanical_inference, not unresolved", () => {
+    const { root } = createFixture();
+
+    writeFixtureFile(root, ".env.example", "SERVER_TOKEN=your-server-token\n");
+    writeFixtureFile(
+      root,
+      "api/server.ts",
+      "const token = process.env.SERVER_TOKEN;\n",
+    );
+
+    const result = collectConfiguration({ root });
+    const server = result.metadata.environmentVariables.find(
+      (record) => record.name === "SERVER_TOKEN",
+    );
+
+    expect(server.classification).toBe("server-only");
+    // references and accessStyles are regex output over JS/TS source (R2) and inherit the
+    // mechanical_inference default without needing their own override.
+    expect(server.evidenceLabels).toEqual({
+      default: "mechanical_inference",
+      fields: {
+        declarations: "observed_fact",
+        descriptions: "documented_intent",
+        name: "observed_fact",
+      },
+    });
+  });
+
+  it("labels the unavailable envelope's metadata as unresolved", () => {
+    const missingRoot = join(tmpdir(), `sliceboard-configuration-missing-${Date.now()}`);
+
+    const result = collectConfiguration({ root: missingRoot });
+
+    expect(result.status).toBe("unavailable");
+    expect(result.records).toEqual([]);
+    expect(result.metadata.evidenceLabels).toEqual({ default: "unresolved", fields: {} });
   });
 
   it("does not read configuration symlinks, including links that stay inside the root", () => {
