@@ -812,6 +812,60 @@ describe("repository intelligence delivery", () => {
       expect.objectContaining({ path: "supabase/config.toml", type: "supabase" }),
     );
     expect(serialized).not.toContain(staticSecret);
+
+    // A non-malformed workflow record: nothing here came from a real YAML parser (R2), so
+    // the *default* is mechanical_inference and observed_fact is the exception, per the
+    // inverted example in 7.4.
+    expect(workflow.evidenceLabels).toEqual({
+      default: "mechanical_inference",
+      fields: {
+        malformed: "observed_fact",
+        path: "observed_fact",
+      },
+    });
+
+    // package.json (non-malformed): settings/deliveryScripts are authored declarations
+    // (R1). Each deliveryScripts[] element carries its own block: name/command are
+    // authored, kind is regex-over-script-name output (R2).
+    const packageRecord = result.records.find((record) => record.type === "package");
+    expect(packageRecord.evidenceLabels).toEqual({
+      default: "documented_intent",
+      fields: {
+        format: "mechanical_inference",
+        path: "observed_fact",
+        type: "mechanical_inference",
+      },
+    });
+    expect(packageRecord.deliveryScripts[0].evidenceLabels).toEqual({
+      default: "documented_intent",
+      fields: { kind: "mechanical_inference" },
+    });
+
+    // vercel.json (non-malformed): a full JSON parse of declared config (R2).
+    const vercelRecord = result.records.find((record) => record.type === "vercel");
+    expect(vercelRecord.evidenceLabels).toEqual({
+      default: "documented_intent",
+      fields: {
+        format: "mechanical_inference",
+        path: "observed_fact",
+        type: "mechanical_inference",
+      },
+    });
+
+    // supabase/config.toml: a line scanner, never a real TOML parser (R2).
+    const supabaseRecord = result.records.find((record) => record.type === "supabase");
+    expect(supabaseRecord.evidenceLabels).toEqual({
+      default: "mechanical_inference",
+      fields: { malformed: "observed_fact", path: "observed_fact" },
+    });
+
+    // metadata itself: workflowCount is a count over an observed set (files actually found
+    // on disk); workflowEnvironmentVariables/workflowSecretNames inherit the
+    // mechanical_inference default (scanner output).
+    expect(result.metadata.evidenceLabels).toEqual({
+      default: "mechanical_inference",
+      fields: { workflowCount: "observed_fact" },
+    });
   });
 
   it("uses env-block indentation instead of unrelated workflow mappings", () => {
@@ -907,6 +961,43 @@ describe("repository intelligence delivery", () => {
     expect(result.records).toContainEqual(
       expect.objectContaining({ path: ".github/workflows/broken.yml", malformed: true }),
     );
+
+    // A malformed record short-circuits everything else - nothing was reliably extracted,
+    // so every field falls back to the unresolved default with the fixed observed/inferred
+    // overrides.
+    const malformedWorkflow = result.records.find(
+      (record) => record.path === ".github/workflows/broken.yml",
+    );
+    expect(malformedWorkflow.evidenceLabels).toEqual({
+      default: "unresolved",
+      fields: {
+        format: "mechanical_inference",
+        malformed: "observed_fact",
+        path: "observed_fact",
+        type: "mechanical_inference",
+      },
+    });
+
+    const malformedNetlify = result.records.find((record) => record.path === "netlify.toml");
+    expect(malformedNetlify.evidenceLabels).toEqual({
+      default: "unresolved",
+      fields: {
+        format: "mechanical_inference",
+        malformed: "observed_fact",
+        path: "observed_fact",
+        type: "mechanical_inference",
+      },
+    });
+  });
+
+  it("labels the unavailable envelope's metadata as unresolved", () => {
+    const missingRoot = join(tmpdir(), `sliceboard-delivery-missing-${Date.now()}`);
+
+    const result = collectDelivery({ root: missingRoot });
+
+    expect(result.status).toBe("unavailable");
+    expect(result.records).toEqual([]);
+    expect(result.metadata.evidenceLabels).toEqual({ default: "unresolved", fields: {} });
   });
 
   it("does not read delivery symlinks, including links that stay inside the root", () => {
