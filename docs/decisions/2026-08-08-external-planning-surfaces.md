@@ -101,3 +101,30 @@ note should be rewritten rather than implemented.
    That is a worse answer, but it may be a sufficient one.
 3. **It presumes `veans` sticks.** veans describes itself as experimental. If it is
    dropped, `.veans.yml` disappears and this note is moot.
+
+## 8. Addendum (2026-08-09): the human/agent-facing half is now solved, separately
+
+This note is about the **collector** — repo-intel silently under-reporting when a
+repo's tasks live in Vikunja instead of `docs/tasks/`. That gap is still open; the
+trigger condition in §6 hasn't fired.
+
+A related but distinct gap has been closed, independently of this document:
+SliceBoard's `AGENTS.md` now states, in its own words, how an agent reconciles
+`veans prime`'s "use veans instead of TodoWrite" instruction against the repo's own
+`docs/tasks/` convention — the two looked contradictory to at least one outside
+audit before this landed. The resolution is the same split predicted in §1
+(`veans`/Vikunja = live execution state, `docs/tasks/` = durable record), stated as
+a self-contained paragraph in AGENTS.md itself, not a pointer to any personal config:
+
+> **State in Vikunja, record in the repo.** A Vikunja card answers "what is being
+> worked on right now". A task file answers "what happened, and why". If you
+> somehow only manage one, make it the task file — that is the half that persists.
+
+**When repo-intel gets set up on another repository that also has a `.veans.yml`**,
+this is the template to reuse: adapt SliceBoard's `AGENTS.md` "Task records" section
+(the two-system framing, the claim/review/never-close-yourself workflow, the
+bare-number-vs-database-id trap, the pulled-out "state in Vikunja, record in the
+repo" line) rather than re-deriving it. This does not touch §6's trigger condition —
+the collector still cannot see Vikunja-tracked work, and still shouldn't query it
+live (§4) — it only means a human/agent working in such a repo won't hit the
+ambiguity that prompted this addendum.
