@@ -32,6 +32,33 @@ describe("planning collector", () => {
     expect(first.records).toContainEqual(expect.objectContaining({ path: "docs/decisions/2026-choice.md", kind: "decision" }));
     expect(first.records).toContainEqual(expect.objectContaining({ path: "docs/tasks/roadmap-task.md", kind: "task", owner: "[REDACTED:email]" }));
     expect(first.metadata.externalContext).toMatchObject({ status: "unavailable", required: false, accessed: false });
+
+    const decisionRecord = first.records.find((record) => record.path === "docs/decisions/2026-choice.md");
+    expect(decisionRecord.evidenceLabels).toEqual({
+      default: "documented_intent",
+      fields: { kind: "mechanical_inference", path: "observed_fact", lineCount: "observed_fact", byteSize: "observed_fact", status: "unresolved", owner: "unresolved" },
+    });
+
+    const declaredAuthorityRecord = first.records.find((record) => record.path === "SLICE_BOARD_AUTHORITY.md");
+    expect(declaredAuthorityRecord.evidenceLabels).toEqual({
+      default: "documented_intent",
+      fields: { path: "observed_fact", lineCount: "observed_fact", byteSize: "observed_fact", status: "unresolved", owner: "unresolved" },
+    });
+
+    const taskRecord = first.records.find((record) => record.path === "docs/tasks/roadmap-task.md");
+    expect(taskRecord.evidenceLabels).toEqual({
+      default: "documented_intent",
+      fields: { kind: "mechanical_inference", path: "observed_fact", lineCount: "observed_fact", byteSize: "observed_fact" },
+    });
+
+    expect(first.metadata.evidenceLabels).toEqual({
+      default: "documented_intent",
+      fields: { documentCount: "observed_fact" },
+    });
+    expect(first.metadata.externalContext.evidenceLabels).toEqual({
+      default: "observed_fact",
+      fields: { representation: "unresolved", status: "unresolved" },
+    });
   });
 
   it("returns partial evidence for absent or unreadable optional planning input without document bodies", () => {
@@ -59,6 +86,38 @@ describe("planning collector", () => {
     expect(result.records).toContainEqual(
       expect.objectContaining({ path: "AGENTS.md", kind: "agent-guidance" }),
     );
+
+    const agentsRecord = result.records.find((record) => record.path === "AGENTS.md");
+    expect(agentsRecord.evidenceLabels.fields.kind).toBe("mechanical_inference");
+  });
+
+  it("falls back to the filename for a document with no heading, and labels the title mechanical_inference", () => {
+    const root = fixture();
+    write(root, "docs/plans/no-heading.md", "Just some prose with no heading line.\n");
+    const result = collectPlanning({ root });
+
+    const record = result.records.find((entry) => entry.path === "docs/plans/no-heading.md");
+    expect(record.title).toBe("no-heading.md");
+    expect(record.evidenceLabels.fields.title).toBe("mechanical_inference");
+  });
+
+  it("labels status and owner unresolved when a document has no front matter", () => {
+    const root = fixture();
+    write(root, "docs/plans/no-front-matter.md", "# No Front Matter\nJust prose.\n");
+    const result = collectPlanning({ root });
+
+    const record = result.records.find((entry) => entry.path === "docs/plans/no-front-matter.md");
+    expect(record.status).toBeNull();
+    expect(record.owner).toBeNull();
+    expect(record.evidenceLabels.fields.status).toBe("unresolved");
+    expect(record.evidenceLabels.fields.owner).toBe("unresolved");
+  });
+
+  it("reports an unresolved evidenceLabels envelope for an unavailable repository", () => {
+    const result = collectPlanning({ root: join(tmpdir(), "missing-planning-fixture") });
+
+    expect(result.status).toBe("unavailable");
+    expect(result.metadata.evidenceLabels).toEqual({ default: "unresolved", fields: {} });
   });
 
   it("finds tasks in a bare tasks/ directory, not just docs/tasks/", () => {
