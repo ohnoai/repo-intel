@@ -1,0 +1,49 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "opencode/claude-opus-5",
+  "agent": {
+    "architect": {
+      "description": "Surveys all six repo-intel collectors once and defines the single shared shape for the four evidence labels (observed-fact / documented-intent / mechanical-inference / unknown-unresolved) before any collector code changes. Read-only.",
+      "mode": "primary",
+      "model": "opencode/claude-opus-5",
+      "temperature": 0.2,
+      "permission": {
+        "edit": "deny",
+        "bash": { "npm test*": "allow", "npx vitest*": "allow", "git log*": "allow", "git diff*": "allow", "*": "ask" },
+        "webfetch": "deny",
+        "task": "deny"
+      }
+    },
+    "implementer": {
+      "description": "Applies the architect's evidence-label spec to one collector file plus its own tests. Invoke once per collector: collect-files, collect-git, collect-config, collect-delivery, collect-planning, collect-product.",
+      "mode": "primary",
+      "model": "opencode/claude-sonnet-5",
+      "permission": {
+        "edit": "allow",
+        "bash": { "npm test*": "allow", "npx vitest*": "allow", "*": "ask" },
+        "webfetch": "deny",
+        "external_directory": "deny"
+      }
+    },
+    "verifier": {
+      "description": "Runs the full suite and reviews each collector's diff against the architect's spec. Reports findings, does not patch them.",
+      "mode": "primary",
+      "model": "opencode-go/glm-5.2",
+      "permission": {
+        "edit": "deny",
+        "bash": { "npm test*": "allow", "npx vitest*": "allow", "*": "ask" },
+        "webfetch": "deny"
+      }
+    },
+    "docs": {
+      "description": "Updates docs/README.md, root README.md, and a decision record once the evidence-label work has landed and passed verification.",
+      "mode": "primary",
+      "model": "opencode/claude-haiku-4-5",
+      "permission": {
+        "edit": "allow",
+        "bash": { "git log*": "allow", "*": "ask" },
+        "webfetch": "deny"
+      }
+    }
+  }
+}

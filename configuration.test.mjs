@@ -110,6 +110,44 @@ describe("repository intelligence configuration", () => {
     expect(typescriptRecord.references).toEqual(["tsconfig.app.json"]);
     expect(typescriptRecord.entryPoints.include).toEqual(["src"]);
     expect(serialized).not.toContain(lockOnlyValue);
+
+    // package.json: settings/scripts/dependencies/developmentDependencies are all
+    // documented_intent (R1 - authored, unverified claims); toolchain is the exception,
+    // since it is the tool's own filtered subset rather than something the file declares.
+    expect(packageRecord.evidenceLabels).toEqual({
+      default: "documented_intent",
+      fields: {
+        format: "mechanical_inference",
+        path: "observed_fact",
+        toolchain: "mechanical_inference",
+        type: "mechanical_inference",
+      },
+    });
+    // package-lock.json: a whole-file JSON parse of declared configuration (R2).
+    expect(lockRecord.evidenceLabels).toEqual({
+      default: "documented_intent",
+      fields: {
+        format: "mechanical_inference",
+        path: "observed_fact",
+        type: "mechanical_inference",
+      },
+    });
+    // tsconfig.json: the one real structural JSON/JSONC parse among this collector's
+    // record shapes (R2), so settings/references/entryPoints are documented_intent.
+    expect(typescriptRecord.evidenceLabels).toEqual({
+      default: "documented_intent",
+      fields: {
+        format: "mechanical_inference",
+        path: "observed_fact",
+        type: "mechanical_inference",
+      },
+    });
+    // metadata mirrors the package record: documented_intent by default, toolchain the
+    // sole mechanical_inference override.
+    expect(result.metadata.evidenceLabels).toEqual({
+      default: "documented_intent",
+      fields: { toolchain: "mechanical_inference" },
+    });
   });
 
   it("redacts command credentials and local paths in configuration and delivery scripts", () => {
@@ -470,6 +508,8 @@ describe("repository intelligence configuration", () => {
     writeFixtureFile(root, "vite.config.ts", "export default {};\n");
 
     const result = collectConfiguration({ root });
+    const packageRecord = result.records.find((record) => record.path === "package.json");
+    const viteRecord = result.records.find((record) => record.path === "vite.config.ts");
 
     expect(result.status).toBe("partial");
     expect(result.records).toContainEqual(
@@ -480,6 +520,24 @@ describe("repository intelligence configuration", () => {
     );
     expect(result.warnings.some((warning) => warning.includes("Malformed JSON"))).toBe(true);
     expect(result.warnings.some((warning) => warning.includes("Malformed JSON-like"))).toBe(true);
+    // A malformed record extracted nothing, so the record's default drops to unresolved;
+    // only path/type/format/malformed - assigned from the filename, not the file's
+    // contents - stay claimed.
+    expect(packageRecord.evidenceLabels).toEqual({
+      default: "unresolved",
+      fields: {
+        format: "mechanical_inference",
+        malformed: "observed_fact",
+        path: "observed_fact",
+        type: "mechanical_inference",
+      },
+    });
+    // A script config (vite.config.ts) is regex/line-scanner output throughout (R2):
+    // mechanical_inference by default, with only path claimed as observed.
+    expect(viteRecord.evidenceLabels).toEqual({
+      default: "mechanical_inference",
+      fields: { path: "observed_fact" },
+    });
   });
 
   it("recognizes TOML array tables and clears malformed section context", () => {
@@ -511,6 +569,128 @@ describe("repository intelligence configuration", () => {
       "redirects.to",
     ]);
     expect(netlify.malformed).toBe(true);
+    // Malformed TOML still carried partial settings from the line scanner, but per the
+    // malformed rule those parsed-content fields become unresolved rather than the
+    // record's usual mechanical_inference - nothing was authoritatively extracted.
+    expect(netlify.evidenceLabels).toEqual({
+      default: "unresolved",
+      fields: {
+        format: "mechanical_inference",
+        malformed: "observed_fact",
+        path: "observed_fact",
+        type: "mechanical_inference",
+      },
+    });
+  });
+
+  it("labels a well-formed TOML record as mechanical_inference throughout (line scanner, not a real parser)", () => {
+    const { root } = createFixture();
+
+    writeFixtureFile(
+      root,
+      "netlify.toml",
+      ["[build]", 'command = "npm run build"'].join("\n"),
+    );
+
+    const result = collectConfiguration({ root });
+    const netlify = result.records.find((record) => record.path === "netlify.toml");
+
+    expect(netlify.malformed).toBe(false);
+    expect(netlify.evidenceLabels).toEqual({
+      default: "mechanical_inference",
+      fields: { malformed: "observed_fact", path: "observed_fact" },
+    });
+  });
+
+  it("labels environment-variable evidence per field, including the value-dependent 'unknown' classification", () => {
+    const { root } = createFixture();
+
+    writeFixtureFile(
+      root,
+      ".env.example",
+      ["# A description of this variable.", "UNREFERENCED_VALUE=your-placeholder"].join("\n"),
+    );
+
+    const result = collectConfiguration({ root });
+    const unreferenced = result.metadata.environmentVariables.find(
+      (record) => record.name === "UNREFERENCED_VALUE",
+    );
+
+    // Never referenced anywhere, so classification falls through to the "unknown"
+    // sentinel - which R3 says is unresolved, not mechanical_inference like the field
+    // normally is.
+    expect(unreferenced.classification).toBe("unknown");
+    expect(unreferenced.evidenceLabels).toEqual({
+      default: "mechanical_inference",
+      fields: {
+        classification: "unresolved",
+        declarations: "observed_fact",
+        descriptions: "documented_intent",
+        name: "observed_fact",
+      },
+    });
+  });
+
+  it("labels a referenced environment variable's classification as mechanical_inference, not unresolved", () => {
+    const { root } = createFixture();
+
+    writeFixtureFile(root, ".env.example", "SERVER_TOKEN=your-server-token\n");
+    writeFixtureFile(
+      root,
+      "api/server.ts",
+      "const token = process.env.SERVER_TOKEN;\n",
+    );
+
+    const result = collectConfiguration({ root });
+    const server = result.metadata.environmentVariables.find(
+      (record) => record.name === "SERVER_TOKEN",
+    );
+
+    expect(server.classification).toBe("server-only");
+    // references and accessStyles are regex output over JS/TS source (R2) and inherit the
+    // mechanical_inference default without needing their own override.
+    expect(server.evidenceLabels).toEqual({
+      default: "mechanical_inference",
+      fields: {
+        declarations: "observed_fact",
+        descriptions: "documented_intent",
+        name: "observed_fact",
+      },
+    });
+  });
+
+  it("labels the .env.example record's own settings.variableCount as observed_fact, inherited from declarations", () => {
+    const { root } = createFixture();
+
+    writeFixtureFile(root, ".env.example", "SERVER_TOKEN=your-server-token\n");
+
+    const result = collectConfiguration({ root });
+    const environmentExample = result.records.find(
+      (record) => record.type === "environment-example",
+    );
+
+    // .env.example has no explicit row in section 6.3: settings.variableCount is a count
+    // over declarations[], which are observed_fact (dotenv is a trivial, fully-parsed line
+    // format per R2), so the count inherits that label under the "a count inherits the
+    // label of the set it summarizes" rule - it's an inference from that rule, not a
+    // transcription of a spec row.
+    expect(environmentExample.evidenceLabels).toEqual({
+      default: "observed_fact",
+      fields: {
+        type: "mechanical_inference",
+        format: "mechanical_inference",
+      },
+    });
+  });
+
+  it("labels the unavailable envelope's metadata as unresolved", () => {
+    const missingRoot = join(tmpdir(), `sliceboard-configuration-missing-${Date.now()}`);
+
+    const result = collectConfiguration({ root: missingRoot });
+
+    expect(result.status).toBe("unavailable");
+    expect(result.records).toEqual([]);
+    expect(result.metadata.evidenceLabels).toEqual({ default: "unresolved", fields: {} });
   });
 
   it("does not read configuration symlinks, including links that stay inside the root", () => {
@@ -632,6 +812,60 @@ describe("repository intelligence delivery", () => {
       expect.objectContaining({ path: "supabase/config.toml", type: "supabase" }),
     );
     expect(serialized).not.toContain(staticSecret);
+
+    // A non-malformed workflow record: nothing here came from a real YAML parser (R2), so
+    // the *default* is mechanical_inference and observed_fact is the exception, per the
+    // inverted example in 7.4.
+    expect(workflow.evidenceLabels).toEqual({
+      default: "mechanical_inference",
+      fields: {
+        malformed: "observed_fact",
+        path: "observed_fact",
+      },
+    });
+
+    // package.json (non-malformed): settings/deliveryScripts are authored declarations
+    // (R1). Each deliveryScripts[] element carries its own block: name/command are
+    // authored, kind is regex-over-script-name output (R2).
+    const packageRecord = result.records.find((record) => record.type === "package");
+    expect(packageRecord.evidenceLabels).toEqual({
+      default: "documented_intent",
+      fields: {
+        format: "mechanical_inference",
+        path: "observed_fact",
+        type: "mechanical_inference",
+      },
+    });
+    expect(packageRecord.deliveryScripts[0].evidenceLabels).toEqual({
+      default: "documented_intent",
+      fields: { kind: "mechanical_inference" },
+    });
+
+    // vercel.json (non-malformed): a full JSON parse of declared config (R2).
+    const vercelRecord = result.records.find((record) => record.type === "vercel");
+    expect(vercelRecord.evidenceLabels).toEqual({
+      default: "documented_intent",
+      fields: {
+        format: "mechanical_inference",
+        path: "observed_fact",
+        type: "mechanical_inference",
+      },
+    });
+
+    // supabase/config.toml: a line scanner, never a real TOML parser (R2).
+    const supabaseRecord = result.records.find((record) => record.type === "supabase");
+    expect(supabaseRecord.evidenceLabels).toEqual({
+      default: "mechanical_inference",
+      fields: { malformed: "observed_fact", path: "observed_fact" },
+    });
+
+    // metadata itself: workflowCount is a count over an observed set (files actually found
+    // on disk); workflowEnvironmentVariables/workflowSecretNames inherit the
+    // mechanical_inference default (scanner output).
+    expect(result.metadata.evidenceLabels).toEqual({
+      default: "mechanical_inference",
+      fields: { workflowCount: "observed_fact" },
+    });
   });
 
   it("uses env-block indentation instead of unrelated workflow mappings", () => {
@@ -727,6 +961,43 @@ describe("repository intelligence delivery", () => {
     expect(result.records).toContainEqual(
       expect.objectContaining({ path: ".github/workflows/broken.yml", malformed: true }),
     );
+
+    // A malformed record short-circuits everything else - nothing was reliably extracted,
+    // so every field falls back to the unresolved default with the fixed observed/inferred
+    // overrides.
+    const malformedWorkflow = result.records.find(
+      (record) => record.path === ".github/workflows/broken.yml",
+    );
+    expect(malformedWorkflow.evidenceLabels).toEqual({
+      default: "unresolved",
+      fields: {
+        format: "mechanical_inference",
+        malformed: "observed_fact",
+        path: "observed_fact",
+        type: "mechanical_inference",
+      },
+    });
+
+    const malformedNetlify = result.records.find((record) => record.path === "netlify.toml");
+    expect(malformedNetlify.evidenceLabels).toEqual({
+      default: "unresolved",
+      fields: {
+        format: "mechanical_inference",
+        malformed: "observed_fact",
+        path: "observed_fact",
+        type: "mechanical_inference",
+      },
+    });
+  });
+
+  it("labels the unavailable envelope's metadata as unresolved", () => {
+    const missingRoot = join(tmpdir(), `sliceboard-delivery-missing-${Date.now()}`);
+
+    const result = collectDelivery({ root: missingRoot });
+
+    expect(result.status).toBe("unavailable");
+    expect(result.records).toEqual([]);
+    expect(result.metadata.evidenceLabels).toEqual({ default: "unresolved", fields: {} });
   });
 
   it("does not read delivery symlinks, including links that stay inside the root", () => {

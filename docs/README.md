@@ -43,22 +43,26 @@ authoritative and the repo is ground truth.**
 ## Related tracked records
 
 - Decision record (ADR): [`decisions/2026-07-18-repository-intelligence-collection-boundaries.md`](decisions/2026-07-18-repository-intelligence-collection-boundaries.md)
- - the collection/privacy boundary decisions.
+  - the collection/privacy boundary decisions.
 - Decision record (ADR): [`decisions/2026-08-05-repository-intelligence-exporter-branch-reconciliation.md`](decisions/2026-08-05-repository-intelligence-exporter-branch-reconciliation.md)
- - a branch-reconciliation record from while this still lived in SliceBoard, kept for history.
+  - a branch-reconciliation record from while this still lived in SliceBoard, kept for history.
 - Decision record (ADR): [`decisions/2026-08-06-repository-intelligence-exporter-extraction.md`](decisions/2026-08-06-repository-intelligence-exporter-extraction.md)
- - this extraction, and why `collect-product.mjs` stayed SliceBoard-tuned.
+  - this extraction, why `collect-product.mjs` stayed SliceBoard-tuned at extraction time, and its
+  later addendum recording the generalization that removed that limitation.
+- Decision record (ADR): [`decisions/2026-08-07-evidence-labels.md`](decisions/2026-08-07-evidence-labels.md)
+  - the evidence-labels vocabulary, mapping, and per-collector implementation now shipping in v1.
 - The original build task record stayed behind in `ohnoai/sliceboard` at
- `docs/tasks/repository-intelligence-exporter.md` and was not moved here; it remains history in
- that repository. ⚠️ Its front-matter reads `status: complete`, which described a point-in-time
- working tree, not the true state - see `03-current-state.md` in this directory for the actual
- verified state.
+  `docs/tasks/repository-intelligence-exporter.md` and was not moved here; it remains history in
+  that repository. ⚠️ Its front-matter reads `status: complete`, which described a point-in-time
+  working tree, not the true state - see `03-current-state.md` in this directory for the actual
+  verified state.
 
 ## Status at a glance
 
 See [`03-current-state.md`](03-current-state.md) for the verified current state (last updated
 2026-08-05: 105 focused tests, file inventory, and the full defect ledger with per-item commit
 status) and [`04-remediation-plan.md`](04-remediation-plan.md) for what's left (slices S3, S6, S7
-still open). Re-verify commit-status claims against this repository directly - several items in
+still open). Evidence-labels v1 has shipped (see [`decisions/2026-08-07-evidence-labels.md`](decisions/2026-08-07-evidence-labels.md)).
+Re-verify commit-status claims against this repository directly - several items in
 the ledger were last confirmed in a sandbox session without git access; see the notes inline in
 `03-current-state.md`.

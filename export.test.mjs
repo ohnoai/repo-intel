@@ -143,6 +143,11 @@ describe("repository intelligence export", () => {
     expect(bundle.policy.rawDiffsIncluded).toBe(false);
   });
 
+  it("sets schemaVersion to 2", () => {
+    const { root } = fixture();
+    expect(composeEvidence({ root }).schemaVersion).toBe(2);
+  });
+
   it("threads an explicit --base ref from parseArguments through composeEvidence into the Git collector (S2)", () => {
     const { root } = fixture();
     execFileSync("git", ["init", "--initial-branch=main"], { cwd: root });
