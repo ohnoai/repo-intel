@@ -29,9 +29,11 @@ keychain. Bot identity is `bot-repo-intel` against `tasks.ohnoai.xyz`. The `Sess
 `PreCompact` hooks that fire `veans prime` automatically (`.claude/settings.json`,
 `.opencode/plugin/veans-prime.ts`) are local machine config, not committed - see `.gitignore`.
 
-Note that a bare number means the task's **index within the project**, not its database id.
-The JSON returns both - `"id"` and `"identifier": "#N"` - and only `#N` works with `claim`,
-`show`, and `update`.
+Note that the task's project-relative identifier is not its database id. The JSON returns
+both - `"id"` (a global database id, not project-scoped) and `"identifier"` (this project's
+own numbering) - and only `"identifier"` works with `claim`, `show`, and `update`. This
+project's identifier prefix is `INTEL`, so task 1 is `INTEL-1`, not a bare `#1` - check the
+prefix per-project rather than assuming one.
 
 **`docs/decisions/` - the durable repository record.** This repository doesn't have a
 `docs/tasks/` execution-log convention the way some sibling repositories do; durable facts
