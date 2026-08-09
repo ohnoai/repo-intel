@@ -129,7 +129,7 @@ content, so a redaction gap fails the write rather than silently shipping. Full 
 ## Status
 
 Not a finished v1. **126 focused tests pass** as of 2026-08-09 (sanitize 33, collectors 28,
-configuration 28, export 20, planning-product 17), verified with `npx vitest run` in this repository.
+configuration 28, export 20, planning-product 17), verified with `npm test` in this repository.
 Slices S3 (warnings/observations split), S6 (schema v3 - evidence-labels claimed v2 first), and S7
 (test-coverage hardening) are still open - see [`docs/04-remediation-plan.md`](docs/04-remediation-plan.md).
 
