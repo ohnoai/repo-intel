@@ -6,3 +6,6 @@ coverage/
 
 # agent tooling
 .serena/
+.claude/settings.json
+.claude/settings.local.json
+.opencode/

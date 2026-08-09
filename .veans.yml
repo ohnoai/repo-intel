@@ -1,0 +1,12 @@
+server: https://tasks.ohnoai.xyz
+project_id: 13
+view_id: 56
+buckets:
+    todo: 44
+    in_progress: 45
+    in_review: 47
+    done: 46
+    scrapped: 48
+bot:
+    username: bot-repo-intel
+    user_id: 6
