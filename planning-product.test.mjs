@@ -159,6 +159,8 @@ describe("product collector", () => {
     expect(result.metadata.product).toBeNull();
     expect(result.metadata.signals).toEqual([]);
     expect(result.metadata.riskSurfaces).toEqual([]);
+    expect(result.records[0].evidenceLabels.fields.product).toBe("unresolved");
+    expect(result.metadata.evidenceLabels.fields.product).toBe("unresolved");
   });
 
   it("detects configured product signals and risk surfaces without exporting source", () => {
@@ -184,6 +186,16 @@ describe("product collector", () => {
     expect(result.metadata.riskSurfaces.map((risk) => risk.id)).toEqual(expect.arrayContaining(["state-invariant", "sync-concurrency", "premium-boundary"]));
     expect(result.records[0].product).toBe("FixtureBoard");
     expect(JSON.stringify(result)).not.toContain("function applyFeaturePatch");
+    expect(result.records[0].evidenceLabels.fields.product).toBe("documented_intent");
+    expect(result.metadata.evidenceLabels).toEqual({ default: "documented_intent", fields: {} });
+    expect(result.metadata.signals[0].evidenceLabels).toEqual({
+      default: "documented_intent",
+      fields: { evidencePaths: "mechanical_inference" },
+    });
+    expect(result.metadata.riskSurfaces[0].evidenceLabels).toEqual({
+      default: "documented_intent",
+      fields: { detected: "mechanical_inference", evidencePaths: "mechanical_inference" },
+    });
   });
 
   it("reports product: null when configured signals never fire, even with a configured name", () => {
@@ -199,6 +211,8 @@ describe("product collector", () => {
     expect(result.metadata.product).toBeNull();
     expect(result.records[0].product).toBeNull();
     expect(result.metadata.signals).toEqual([]);
+    expect(result.records[0].evidenceLabels.fields.product).toBe("unresolved");
+    expect(result.metadata.evidenceLabels.fields.product).toBe("unresolved");
   });
 
   it("drops signal and risk-surface entries with an invalid id, pattern, or severity", () => {
@@ -285,5 +299,6 @@ describe("product collector", () => {
     const result = collectProduct({ root: join(tmpdir(), "missing-product-fixture") });
     expect(result.status).toBe("unavailable");
     expect(result.metadata.riskSurfaces).toEqual([]);
+    expect(result.metadata.evidenceLabels).toEqual({ default: "unresolved", fields: {} });
   });
 });
