@@ -147,7 +147,7 @@ export function composeEvidence({ root = process.cwd(), includeDiff = false, bas
   if (!includeDiff) collectors.git = withoutDiff(collectors.git);
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     collectors,
     policy: {
       rawDiffsIncluded: false,

@@ -1,11 +1,4 @@
-# Evidence Labels (DRAFT)
-
-> **STATUS: DRAFT — DESIGN ONLY. NOT A DECISION RECORD YET.**
-> No collector code was changed to produce this document. This becomes a real decision
-> record only once the design below is implemented, the full suite passes, and an
-> independent verifier confirms the per-collector mapping against actual output. Until
-> then it is a proposal, and the per-collector mappings in §7 are claims about what the
-> code does today that a reader should re-check against the line numbers cited.
+# Evidence Labels
 
 ## 1. Context
 
