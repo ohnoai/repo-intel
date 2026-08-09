@@ -659,6 +659,30 @@ describe("repository intelligence configuration", () => {
     });
   });
 
+  it("labels the .env.example record's own settings.variableCount as observed_fact, inherited from declarations", () => {
+    const { root } = createFixture();
+
+    writeFixtureFile(root, ".env.example", "SERVER_TOKEN=your-server-token\n");
+
+    const result = collectConfiguration({ root });
+    const environmentExample = result.records.find(
+      (record) => record.type === "environment-example",
+    );
+
+    // .env.example has no explicit row in section 6.3: settings.variableCount is a count
+    // over declarations[], which are observed_fact (dotenv is a trivial, fully-parsed line
+    // format per R2), so the count inherits that label under the "a count inherits the
+    // label of the set it summarizes" rule - it's an inference from that rule, not a
+    // transcription of a spec row.
+    expect(environmentExample.evidenceLabels).toEqual({
+      default: "observed_fact",
+      fields: {
+        type: "mechanical_inference",
+        format: "mechanical_inference",
+      },
+    });
+  });
+
   it("labels the unavailable envelope's metadata as unresolved", () => {
     const missingRoot = join(tmpdir(), `sliceboard-configuration-missing-${Date.now()}`);
 
