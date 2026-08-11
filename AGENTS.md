@@ -19,15 +19,15 @@ this repo, the same way they would against any repository that hasn't configured
 **Two systems are in play here. They are not interchangeable and neither replaces
 the other.**
 
-**veans / Vikunja - live execution state.** If `veans prime` runs on `SessionStart` and tells
+**veans / Vikunja - live execution state.** `veans prime` runs on `SessionStart` and tells
 you to use veans instead of `TodoWrite`, that instruction is correct and means exactly what it
 says: veans replaces the *ephemeral in-session todo list*, not this repository's records.
 Claim a task before you start (`veans claim #N`), move it to **In Review** when you finish, and
 **never mark it Done yourself** - a human closes it once the work has actually landed. Config
 is `.veans.yml` at the root: committed, no secrets in it, the bot token lives in the OS
-keychain. Bot identity is `bot-repo-intel` against `tasks.ohnoai.xyz`. The `SessionStart`/
-`PreCompact` hooks that fire `veans prime` automatically (`.claude/settings.json`,
-`.opencode/plugin/veans-prime.ts`) are local machine config, not committed - see `.gitignore`.
+keychain. Bot identity is `bot-repo-intel` against `tasks.ohnoai.xyz`. The `SessionStart`/`PreCompact` hooks that auto-run `veans prime` live in committed
+`.claude/settings.json` and `.opencode/plugin/veans-prime.ts` (same pattern as `.veans.yml`:
+config committed, secrets in the OS keychain).
 
 Note that the task's project-relative identifier is not its database id. The JSON returns
 both - `"id"` (a global database id, not project-scoped) and `"identifier"` (this project's
