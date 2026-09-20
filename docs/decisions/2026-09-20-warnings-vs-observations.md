@@ -127,7 +127,37 @@ One pull request. Steps in order, each small enough to review alone:
    - The test needs `includeDiff` true in a repository with no local `main` and no upstream
      branch. It asserts `status: "complete"`, the one observation with its id, and that the
      message is not in `warnings`. It must fail if the event is put back through `warn()`.
-4. `planning`: one event moved.
+4. `planning`: one event moved (`required-authority-document-absent`). This is the simple
+   case: status here is `warnings.length ? "partial" : "complete"`, so taking the message out
+   of `warnings` is what makes the collector `complete`. Notes:
+   - Only the push of "Expected repository authority document was absent: <path>." moves.
+     Its text stays exactly as it is today. Every other planning warning (outside root,
+     symlink, over the read limit, unreadable, config could not be parsed, collection
+     bounded) stays a warning.
+   - Leave the existing `warnings` finalisation (`[...new Set(warnings)].sort(compareText)`)
+     alone. Observations go through `buildObservations`, not through that line.
+   - Two return sites: the `unavailable` early return (the directory does not exist) carries
+     `observations: []`, and the final return carries `buildObservations(observations)`.
+   - The existing test "returns partial evidence for absent or unreadable optional planning
+     input..." in `planning-product.test.mjs` asserts `partial` and that the warning is
+     present. The absent-document event is its only warning, so rewrite it to expect
+     `complete`, empty `warnings`, and the one observation with its id. Keep its assertions
+     that no document body or email leaks into the output.
+   - After that rewrite, no planning test would show that a real warning still gives
+     `partial`. Add one: a malformed `.repo-intelligence.json` gives `partial`, a "could not
+     be parsed" warning, and `observations: []`.
+   - Add the section 6 acceptance case as a test: a required document that is truly missing
+     gives `complete`, empty `warnings`, and exactly one observation. Add a second test that
+     a duplicated entry in `requiredAuthorityDocuments` yields one observation (the old
+     `Set` de-duplicated it; `buildObservations` does now). Add an assertion on the existing
+     unavailable-directory test that `observations` is `[]`.
+   - Known quirk, do not fix in this step: a required document that exists on disk but is
+     not also listed under `authorityDocuments`, or found through a default authority path,
+     a roadmap path, or a planning directory, is reported as absent, because the check
+     compares against the discovered-paths list, not the disk. Reproduced 2026-09-20 with
+     `requiredAuthorityDocuments: ["CUSTOM.md"]` and `CUSTOM.md` present. The fixture for
+     the acceptance test must use a document that is really missing, so the test does not
+     depend on this quirk.
 5. `files`, `delivery`, `product`: add the empty `observations` array.
 6. `export.mjs`: `aggregate`, top-level `status`, summary rendering.
 7. A test asserting every collector emits `observations` as an array and the aggregate counts
