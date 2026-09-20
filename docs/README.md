@@ -53,7 +53,7 @@ authoritative and the repo is ground truth.**
   - the evidence-labels vocabulary, mapping, and per-collector implementation now shipping in v1.
 - Decision record (ADR, PROPOSED): [`decisions/2026-09-20-warnings-vs-observations.md`](decisions/2026-09-20-warnings-vs-observations.md)
   - the S3 design: which collection events are warnings and which are observations, the
-  aggregate status rule, and the open owner decisions. Not yet implemented.
+  aggregate status rule, and the settled owner decisions. Not yet implemented.
 - The original build task record stayed behind in `ohnoai/sliceboard` at
   `docs/tasks/repository-intelligence-exporter.md` and was not moved here; it remains history in
   that repository. ⚠️ Its front-matter reads `status: complete`, which described a point-in-time

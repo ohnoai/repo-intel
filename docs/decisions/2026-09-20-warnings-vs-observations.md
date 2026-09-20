@@ -1,8 +1,8 @@
 # Warnings vs. Observations and Aggregate Status (S3)
 
-> **STATUS: PROPOSED. Design only, no code written.** Section 3 holds decisions that belong to
-> the repository owner. Nothing here is a decision record until those are answered, the work
-> ships, and the acceptance check in section 6 passes.
+> **STATUS: PROPOSED, owner decisions settled (2026-09-20). Design only, no code written.**
+> Section 3 records the three owner decisions; each took the recommendation. This stays a
+> proposal until the work ships and the acceptance check in section 6 passes.
 
 ## 1. Context
 
@@ -71,21 +71,24 @@ the envelope has one shape.
 Warnings, and lists observations grouped by collector with counts. `Warnings: None.` becomes
 true on a healthy repository, which it is not today.
 
-## 3. Open decisions for the owner
+## 3. Owner decisions
 
-**3.1 Version bump.** S3 is additive (new keys), so it can leave `schemaVersion` at 2 and let S6
+Settled 2026-09-20. The owner replied "go with your recommendations" to all three, so each
+below is the recommended option and the alternative is recorded as the road not taken.
+
+**3.1 Version bump. DECIDED: no bump in S3.** S3 is additive (new keys), so it can leave `schemaVersion` at 2 and let S6
 make the single bump to 3 along with the structural guard and the always-present `diff` key,
 which are the only breaking changes. *Recommendation: no bump in S3.* The alternative is to bump
 to 3 in S3 and let S6 build on it, which is cleaner per pull request but spends a version number
 on an additive change.
 
-**3.2 Missing required document.** Moving "expected authority document absent" to an observation
+**3.2 Missing required document. DECIDED: observation.** Moving "expected authority document absent" to an observation
 means a repository that misses a required `AGENTS.md` still reports `complete`. *Recommendation:
 observation*, because the tool collected everything it could, and the summary still shows it.
 The alternative is to keep it a warning, on the reading that a missing required document is
 important enough to demote status.
 
-**3.3 Coverage limits.** "Bounded" and "oversized" warnings mean the tool did not look at
+**3.3 Coverage limits. DECIDED: they stay warnings.** "Bounded" and "oversized" warnings mean the tool did not look at
 everything, so *recommendation: they stay warnings.* The alternative is to treat any hard limit
 as an observation, which would hide real gaps behind a `complete` status.
 
