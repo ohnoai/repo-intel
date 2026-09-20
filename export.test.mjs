@@ -262,6 +262,14 @@ describe("git-ignore guard on the output directory", () => {
     expect(existsSync(join(root, "tmp", "repository-intelligence", "evidence-bundle.json"))).toBe(true);
   });
 
+  it("refuses when an ignore rule covers the bundle but not the summary", () => {
+    const { root } = gitFixture();
+    writeFileSync(join(root, ".gitignore"), "*.json\n");
+
+    expect(() => run(["--root", root])).toThrow(/summary\.md is not git-ignored/);
+    expect(existsSync(join(root, "tmp"))).toBe(false);
+  });
+
   it("writes anyway with --allow-unignored", () => {
     const { root } = gitFixture();
 
@@ -272,7 +280,8 @@ describe("git-ignore guard on the output directory", () => {
 
   it("fails closed when Git cannot read a directory that has a .git entry", () => {
     const { root } = fixture();
-    mkdirSync(join(root, ".git"));
+    // Dangling gitdir: fails identically inside or outside another repository.
+    writeFileSync(join(root, ".git"), "gitdir: ./no-such-gitdir\n");
 
     expect(() => run(["--root", root])).toThrow(/could not tell whether this directory is inside a Git repository/);
     expect(existsSync(join(root, "tmp"))).toBe(false);

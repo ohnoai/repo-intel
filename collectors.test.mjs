@@ -824,7 +824,10 @@ describe("Git collector failure handling", () => {
 
   gitIt("reports unresolved for a directory whose .git entry real Git cannot read", () => {
     const { root } = createFixture();
-    mkdirSync(join(root, ".git"));
+    // A .git file with a dangling gitdir makes Git fail the same way whether or not the
+    // temp directory happens to sit inside another repository (an empty .git directory
+    // does not: Git keeps searching upward and can answer "true").
+    writeFileSync(join(root, ".git"), "gitdir: ./no-such-gitdir\n");
 
     const result = collectGitInventory({ root });
 

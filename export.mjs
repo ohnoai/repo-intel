@@ -315,26 +315,32 @@ function assertOutputGitIgnored(root, outputDirectory) {
   if (workTree === "unknown") {
     throw new Error(
       "Refusing to write: could not tell whether this directory is inside a Git repository " +
-        "(git failed or timed out, and a .git entry exists here or above). " +
+        "(git failed or timed out when asked). " +
         "Re-run, fix the repository state, or pass --allow-unignored to write anyway.",
     );
   }
 
-  const probe = resolve(outputDirectory, BUNDLE_FILENAME);
-  const ignored = runCommand("git", ["check-ignore", "-q", "--", probe], { cwd: rootPath });
-  if (ignored.status === 0) return;
-
+  // Both files this run writes must be ignored: a rule that covers the bundle but not
+  // the summary (for example `*.json`) would still leave summary.md committable.
   const shown = relative(rootPath, resolve(outputDirectory)).split("\\").join("/");
-  if (ignored.status === 1) {
+  for (const filename of [BUNDLE_FILENAME, SUMMARY_FILENAME]) {
+    const ignored = runCommand(
+      "git",
+      ["check-ignore", "-q", "--", resolve(outputDirectory, filename)],
+      { cwd: rootPath },
+    );
+    if (ignored.status === 0) continue;
+    if (ignored.status === 1) {
+      throw new Error(
+        `Refusing to write: ${shown}/${filename} is not git-ignored in this repository, so the exported evidence could be committed by accident. ` +
+          `Add "tmp/" to .gitignore and re-run, or pass --allow-unignored to write anyway.`,
+      );
+    }
     throw new Error(
-      `Refusing to write: ${shown} is not git-ignored in this repository, so the exported evidence could be committed by accident. ` +
-        `Add "tmp/" to .gitignore and re-run, or pass --allow-unignored to write anyway.`,
+      `Refusing to write: could not confirm that ${shown}/${filename} is git-ignored (git check-ignore did not give a clear answer). ` +
+        `Fix the repository state, or pass --allow-unignored to write anyway.`,
     );
   }
-  throw new Error(
-    `Refusing to write: could not confirm that ${shown} is git-ignored (git check-ignore did not give a clear answer). ` +
-      `Fix the repository state, or pass --allow-unignored to write anyway.`,
-  );
 }
 
 export function run(argv = process.argv.slice(2)) {
