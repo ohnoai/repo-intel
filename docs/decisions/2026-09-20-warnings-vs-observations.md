@@ -158,7 +158,24 @@ One pull request. Steps in order, each small enough to review alone:
      `requiredAuthorityDocuments: ["CUSTOM.md"]` and `CUSTOM.md` present. The fixture for
      the acceptance test must use a document that is really missing, so the test does not
      depend on this quirk.
-5. `files`, `delivery`, `product`: add the empty `observations` array.
+5. `files`, `delivery`, `product`: add the empty `observations` array. This step is mechanical,
+   so the risk is doing more than it says. Notes:
+   - Each collector has exactly two envelope returns: the `unavailable` early return (the
+     directory does not exist) and the final return. Both get `observations: []`. Other
+     `return {` lines in these files are helpers, not envelopes; leave them alone.
+   - Use a literal `[]`. There is nothing to build or de-duplicate, so do not import
+     `buildObservations`, add an accumulator, or add a helper.
+   - Status stays `warnings.length ? "partial" : "complete"` in all three, and no warning
+     moves. In particular `files` adds "Git file discovery was unavailable; used filesystem
+     discovery instead." with `unshift`. It can read like a plain fact, but tracking is lost
+     (`tracking: "unavailable"`), so it stays a warning under the 2.4 table.
+   - The tests live in three different files: `files` in `collectors.test.mjs`, `delivery` in
+     `configuration.test.mjs`, and `product` in `planning-product.test.mjs`. For each collector,
+     assert `observations` equals `[]` on one ordinary result and on the unavailable-directory
+     result (each file already has a test that calls its collector with a missing directory).
+     An assertion of `[]` fails when the key is absent, so it fails if the change is reverted.
+   - No current test asserts an exact envelope shape, so adding the key should not break one.
+     If one does break, stop and report it instead of loosening the assertion.
 6. `export.mjs`: `aggregate`, top-level `status`, summary rendering.
 7. A test asserting every collector emits `observations` as an array and the aggregate counts
    match the per-collector counts. This is the backstop for the plan's open risk: a missed
