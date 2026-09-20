@@ -112,7 +112,21 @@ One pull request. Steps in order, each small enough to review alone:
 1. Shared helper for building and de-duplicating an observation list, plus its unit tests.
 2. `configuration`: two events moved, with tests that a repository whose only findings are
    observations is `complete`.
-3. `git`: one event moved.
+3. `git`: one event moved (`diff-base-resolved-to-head`). This collector does not use the
+   `warnings.length` rule the others use, so the move is not just a matter of taking the
+   message out of `warnings`:
+   - Its status comes from a `partial` flag that its `warn()` helper sets. The observation
+     must not go through `warn()`. Give it its own accumulator, finalize that with
+     `buildObservations`, and leave the `partial` flag alone. The message text stays exactly
+     as it is today.
+   - Status is derived at two return sites (`status: partial ? "partial" : "complete"`): the
+     early return for `includeDiff` false, and the final return. Both carry `observations`.
+     The `unavailable` early return carries `observations: []`.
+   - The event can only happen when `includeDiff` is true, because the `includeDiff` false
+     early return runs before the diff base is resolved. That path always has no observations.
+   - The test needs `includeDiff` true in a repository with no local `main` and no upstream
+     branch. It asserts `status: "complete"`, the one observation with its id, and that the
+     message is not in `warnings`. It must fail if the event is put back through `warn()`.
 4. `planning`: one event moved.
 5. `files`, `delivery`, `product`: add the empty `observations` array.
 6. `export.mjs`: `aggregate`, top-level `status`, summary rendering.
