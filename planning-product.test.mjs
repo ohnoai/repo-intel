@@ -61,18 +61,66 @@ describe("planning collector", () => {
     });
   });
 
-  it("returns partial evidence for absent or unreadable optional planning input without document bodies", () => {
+  it("returns complete evidence with observations for absent required authority documents, without document bodies", () => {
     const root = fixture();
     write(root, ".repo-intelligence.json", JSON.stringify({
       requiredAuthorityDocuments: ["SLICE_BOARD_AUTHORITY.md", "PASSOFF.md"],
     }));
     write(root, "docs/decisions/broken.md", "# Broken\ncontact secret@example.test\n");
     const result = collectPlanning({ root });
-    expect(result.status).toBe("partial");
-    expect(result.warnings.some((warning) => warning.includes("authority document was absent"))).toBe(true);
+    // S3: a declared-but-missing authority document is a fact about the repository, not
+    // a collection failure -- the tool read everything it could -- so it is an
+    // observation and must not demote status (docs/decisions/2026-09-20-warnings-vs-
+    // observations.md section 2.4 and section 5 step 4). It must fail if this event is
+    // put back through `warnings`.
+    expect(result.status).toBe("complete");
+    expect(result.warnings).toEqual([]);
+    expect(result.observations).toEqual([
+      { id: "required-authority-document-absent", message: "Expected repository authority document was absent: PASSOFF.md." },
+      { id: "required-authority-document-absent", message: "Expected repository authority document was absent: SLICE_BOARD_AUTHORITY.md." },
+    ]);
     expect(JSON.stringify(result)).not.toContain("secret@example.test");
     expect(JSON.stringify(result)).not.toContain("contact secret");
     expect(result.records[0]).not.toHaveProperty("content");
+  });
+
+  it("still reports partial for a real collection failure: a malformed .repo-intelligence.json", () => {
+    const root = fixture();
+    write(root, ".repo-intelligence.json", "{ not valid json");
+    const result = collectPlanning({ root });
+    expect(result.status).toBe("partial");
+    expect(result.warnings).toEqual([
+      "Repository intelligence config could not be parsed: .repo-intelligence.json.",
+    ]);
+    expect(result.observations).toEqual([]);
+  });
+
+  it("reports complete with exactly one observation when a required authority document is truly missing (acceptance check, section 6)", () => {
+    const root = fixture();
+    write(root, ".repo-intelligence.json", JSON.stringify({
+      requiredAuthorityDocuments: ["MISSING.md"],
+    }));
+    const result = collectPlanning({ root });
+    expect(result.status).toBe("complete");
+    expect(result.warnings).toEqual([]);
+    expect(result.observations).toEqual([
+      { id: "required-authority-document-absent", message: "Expected repository authority document was absent: MISSING.md." },
+    ]);
+  });
+
+  it("de-duplicates a required authority document declared twice into one observation", () => {
+    const root = fixture();
+    // Before S3, [...new Set(warnings)] collapsed this same duplicate into one warning;
+    // buildObservations must preserve that collapsing behavior for observations too.
+    write(root, ".repo-intelligence.json", JSON.stringify({
+      requiredAuthorityDocuments: ["MISSING.md", "MISSING.md"],
+    }));
+    const result = collectPlanning({ root });
+    expect(result.status).toBe("complete");
+    expect(result.warnings).toEqual([]);
+    expect(result.observations).toEqual([
+      { id: "required-authority-document-absent", message: "Expected repository authority document was absent: MISSING.md." },
+    ]);
   });
 
   it("stays quiet in a repository that declares nothing, so --root works anywhere", () => {
@@ -118,6 +166,7 @@ describe("planning collector", () => {
 
     expect(result.status).toBe("unavailable");
     expect(result.metadata.evidenceLabels).toEqual({ default: "unresolved", fields: {} });
+    expect(result.observations).toEqual([]);
   });
 
   it("finds tasks in a bare tasks/ directory, not just docs/tasks/", () => {
