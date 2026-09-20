@@ -135,6 +135,11 @@ One pull request. Steps in order, each small enough to review alone:
    collector desyncs the rollup. It also asserts that every observation has a non-empty
    string `id` and `message`, so a collector that forgets an id fails a test instead of
    emitting an entry with no id (which JSON output would drop without complaint).
+   The test must not stop at a healthy repository: it also asserts `observations` is an array
+   on the git collector's `unavailable` envelope (a directory that is not a Git worktree) and
+   on its `includeDiff: false` envelope. Step 3 added the key on those return paths and no
+   other test looks at it there, and the step 6 aggregate loops over every collector, so a
+   missing key on either path would crash the export for a non-git directory.
 
 ## 6. Acceptance check
 
