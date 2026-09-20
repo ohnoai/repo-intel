@@ -1,47 +1,72 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "opencode/claude-opus-5",
+  "model": "opencode/claude-sonnet-5",
   "agent": {
-    "architect": {
-      "description": "Surveys all six repo-intel collectors once and defines the single shared shape for the four evidence labels (observed-fact / documented-intent / mechanical-inference / unknown-unresolved) before any collector code changes. Read-only.",
-      "mode": "primary",
-      "model": "opencode/claude-opus-5",
-      "temperature": 0.2,
-      "permission": {
-        "edit": "deny",
-        "bash": { "npm test*": "allow", "npx vitest*": "allow", "git log*": "allow", "git diff*": "allow", "*": "ask" },
-        "webfetch": "deny",
-        "task": "deny"
-      }
-    },
     "implementer": {
-      "description": "Applies the architect's evidence-label spec to one collector file plus its own tests. Invoke once per collector: collect-files, collect-git, collect-config, collect-delivery, collect-planning, collect-product.",
+      "description": "Implements ONE numbered step from section 5 of docs/decisions/2026-09-20-warnings-vs-observations.md. One collector file plus its test file per run. Follows the section 2.4 classification table exactly.",
       "mode": "primary",
       "model": "opencode/claude-sonnet-5",
+      "prompt": "You implement exactly one numbered step from section 5 of docs/decisions/2026-09-20-warnings-vs-observations.md. Read that record first; it is the design of record and section 3 holds the settled owner decisions. Touch only the files the step names plus their test files. Follow the section 2.4 table exactly: do not reclassify an event, rename an id, or change anything outside the step. Every change needs a test, and a test must fail if the change is reverted. Run `npm test` before you finish and report the exact result. If the design looks wrong or a step cannot be done as written, stop and say so; do not improvise a different design. Do not commit, push, or edit opencode.json.",
       "permission": {
         "edit": "allow",
-        "bash": { "npm test*": "allow", "npx vitest*": "allow", "*": "ask" },
+        "bash": {
+          "npm test*": "allow",
+          "npx vitest*": "allow",
+          "git status*": "allow",
+          "git diff*": "allow",
+          "*": "ask"
+        },
         "webfetch": "deny",
         "external_directory": "deny"
       }
     },
     "verifier": {
-      "description": "Runs the full suite and reviews each collector's diff against the architect's spec. Reports findings, does not patch them.",
+      "description": "Reviews one step's diff against the design record. Different model family from the implementer on purpose. Reports realistic failures only. Read-only.",
       "mode": "primary",
-      "model": "opencode-go/glm-5.2",
+      "model": "opencode/glm-5.2",
+      "prompt": "You review a diff against docs/decisions/2026-09-20-warnings-vs-observations.md (check it against the section 2.4 table and the section 3 decisions). Report only problems that could happen in normal use of this tool, ranked by severity, at most 5. For each give: file:line, the failing scenario with concrete inputs and the wrong result, and a label, either 'reproduced' (you ran it and saw it) or 'reasoned only'. Do not chase exotic or theoretical cases; list any you noticed in a single 'accepted-risk candidates' line with no analysis. If an area has nothing wrong, say so plainly instead of padding. Start with a one-line verdict (ship, ship after fixes, or do not ship). Run `npm test` once. Do not restate the diff. Keep it under 500 words. Do not edit any file.",
       "permission": {
         "edit": "deny",
-        "bash": { "npm test*": "allow", "npx vitest*": "allow", "*": "ask" },
+        "bash": {
+          "npm test*": "allow",
+          "npx vitest*": "allow",
+          "git log*": "allow",
+          "git diff*": "allow",
+          "git status*": "allow",
+          "*": "ask"
+        },
+        "webfetch": "deny"
+      }
+    },
+    "verifier-final": {
+      "description": "One whole-PR review at the end, from a third model family. Same realistic-failures-only rules as verifier. Read-only.",
+      "mode": "primary",
+      "model": "opencode/gpt-5.4",
+      "prompt": "You do the final review of a whole branch against docs/decisions/2026-09-20-warnings-vs-observations.md. Check that the result matches the design's section 2 and section 6 acceptance criteria: every collector emits observations as an array, the aggregate counts match the per-collector counts, and status follows section 2.3. Report only problems that could happen in normal use of this tool, ranked by severity, at most 5, each with file:line, a concrete failing scenario, and a label of 'reproduced' or 'reasoned only'. List exotic cases in one 'accepted-risk candidates' line with no analysis. If nothing is wrong, say so plainly. Start with a one-line verdict. Run `npm test` once. Keep it under 500 words. Do not edit any file.",
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "npm test*": "allow",
+          "npx vitest*": "allow",
+          "git log*": "allow",
+          "git diff*": "allow",
+          "git status*": "allow",
+          "*": "ask"
+        },
         "webfetch": "deny"
       }
     },
     "docs": {
-      "description": "Updates docs/README.md, root README.md, and a decision record once the evidence-label work has landed and passed verification.",
+      "description": "After the S3 code has landed and passed verification: updates docs/README.md, the RI-STATUS row in docs/03-current-state.md, and flips the design record's status. Docs only.",
       "mode": "primary",
       "model": "opencode/claude-haiku-4-5",
       "permission": {
         "edit": "allow",
-        "bash": { "git log*": "allow", "*": "ask" },
+        "bash": {
+          "git log*": "allow",
+          "git diff*": "allow",
+          "*": "ask"
+        },
         "webfetch": "deny"
       }
     }
