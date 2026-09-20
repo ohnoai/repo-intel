@@ -176,7 +176,45 @@ One pull request. Steps in order, each small enough to review alone:
      An assertion of `[]` fails when the key is absent, so it fails if the change is reverted.
    - No current test asserts an exact envelope shape, so adding the key should not break one.
      If one does break, stop and report it instead of loosening the assertion.
-6. `export.mjs`: `aggregate`, top-level `status`, summary rendering.
+6. `export.mjs`: `aggregate`, top-level `status`, summary rendering. This is the largest step.
+   Section 2 leaves a few choices open; they are settled here so the implementer does not
+   have to invent them:
+   - Where: `composeEvidence` builds the bundle (`schemaVersion`, `collectors`, `policy`), so
+     `aggregate` and `status` are added there. Build them with two small pure functions,
+     exported from `export.mjs`, one for the aggregate and one for the bundle status, each
+     taking the `collectors` object. Tests can then hand-build collectors (for example one
+     `unavailable` and five `complete`) without needing real repositories.
+   - Aggregate order: walk the collectors in `compareText` order of their names (the order the
+     summary already uses), and append each collector's own `warnings` and `observations` in the
+     order that collector emitted them. Do not re-sort. The aggregate is then exactly the
+     per-collector lists concatenated, which is what the step 7 count check compares. Several
+     collectors do not sort their warnings today, so a global re-sort would also change output
+     that nothing asked to change.
+   - Status: exactly the 2.3 rule. The bundle is `unavailable` only if every collector is
+     `unavailable`; otherwise `partial` if any collector is `partial` or `unavailable`;
+     otherwise `complete`. One `unavailable` collector among healthy ones gives `partial`, not
+     `unavailable`. Test all four outcomes, including that mixed case.
+   - Do not change `schemaVersion` (decision 3.1). The existing test that pins it to 2 must still
+     pass. `withoutDiff` spreads the whole collector object, so `observations` already survives
+     when `includeDiff` is false; nothing to change there. Sanitizing and validating the new
+     keys needs no change either, because both walk the whole bundle.
+   - Summary: keep the status table exactly as it is. Add `## Observations` after `## Warnings`
+     and before `## External context`. Group by collector in name order, listing only collectors
+     that have observations. Each group gets a `### <collector> (<count>)` heading and one bullet
+     per observation, written as ``- `<id>`: <message>``. With none, write `None.`. This bullet
+     form differs from the warnings form on purpose, so a test can tell a warning line from an
+     observation line. The Warnings section does not change.
+   - Tests must check placement, not just presence. The existing summary test only checks that a
+     `git` warning line exists somewhere. New tests assert that an observation appears after the
+     `## Observations` heading and not under `## Warnings`, and that a warning does not appear
+     under `## Observations`.
+   - `HELP` in `export.mjs` still says the `--base` HEAD case resolves "with a warning rather than
+     a failure". Since step 3 it is an observation. Change only that phrase. `README.md` repeats
+     it and is left for the docs pass. No test pins either wording.
+   - No collector code changes in this step. If a collector turns out not to emit
+     `observations`, stop and report it; do not patch the collector here.
+   - The section 6 acceptance run against `sliceboard` is done by the reviewer, not the
+     implementer, who has no access outside this repository.
 7. A test asserting every collector emits `observations` as an array and the aggregate counts
    match the per-collector counts. This is the backstop for the plan's open risk: a missed
    collector desyncs the rollup. It also asserts that every observation has a non-empty
