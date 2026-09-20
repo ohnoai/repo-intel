@@ -8,6 +8,7 @@ import { collectConfiguration } from "./lib/collect-config.mjs";
 import { collectDelivery } from "./lib/collect-delivery.mjs";
 import { collectPlanning } from "./lib/collect-planning.mjs";
 import { collectProduct } from "./lib/collect-product.mjs";
+import { classifyGitWorkTreeProbe } from "./lib/git-worktree-probe.mjs";
 import { runCommand } from "./lib/run-command.mjs";
 import {
   assertSanitizedMetadata,
@@ -304,25 +305,42 @@ Options:
 
 function assertOutputGitIgnored(root, outputDirectory) {
   const rootPath = repositoryRootPath(root);
-  const inside = runCommand("git", ["rev-parse", "--is-inside-work-tree"], { cwd: rootPath });
-  // Not a Git working tree (or no git): nothing here can be committed by accident.
-  if (!inside.ok || inside.stdout.trim() !== "true") return;
-
-  const probe = resolve(outputDirectory, BUNDLE_FILENAME);
-  const ignored = runCommand("git", ["check-ignore", "-q", "--", probe], { cwd: rootPath });
-  if (ignored.status === 0) return;
-
-  const shown = relative(rootPath, resolve(outputDirectory)).split("\\").join("/");
-  if (ignored.status === 1) {
+  const workTree = classifyGitWorkTreeProbe(
+    runCommand("git", ["rev-parse", "--is-inside-work-tree"], { cwd: rootPath }),
+    rootPath,
+  );
+  // Genuinely not a Git working tree (or Git isn't installed): nothing here can be
+  // committed by accident. A failure Git didn't explain is not that, so it fails closed.
+  if (workTree === "not-a-repo" || workTree === "git-missing" || workTree === "outside-worktree") return;
+  if (workTree === "unknown") {
     throw new Error(
-      `Refusing to write: ${shown} is not git-ignored in this repository, so the exported evidence could be committed by accident. ` +
-        `Add "tmp/" to .gitignore and re-run, or pass --allow-unignored to write anyway.`,
+      "Refusing to write: could not tell whether this directory is inside a Git repository " +
+        "(git failed or timed out when asked). " +
+        "Re-run, fix the repository state, or pass --allow-unignored to write anyway.",
     );
   }
-  throw new Error(
-    `Refusing to write: could not confirm that ${shown} is git-ignored (git check-ignore did not give a clear answer). ` +
-      `Fix the repository state, or pass --allow-unignored to write anyway.`,
-  );
+
+  // Both files this run writes must be ignored: a rule that covers the bundle but not
+  // the summary (for example `*.json`) would still leave summary.md committable.
+  const shown = relative(rootPath, resolve(outputDirectory)).split("\\").join("/");
+  for (const filename of [BUNDLE_FILENAME, SUMMARY_FILENAME]) {
+    const ignored = runCommand(
+      "git",
+      ["check-ignore", "-q", "--", resolve(outputDirectory, filename)],
+      { cwd: rootPath },
+    );
+    if (ignored.status === 0) continue;
+    if (ignored.status === 1) {
+      throw new Error(
+        `Refusing to write: ${shown}/${filename} is not git-ignored in this repository, so the exported evidence could be committed by accident. ` +
+          `Add "tmp/" to .gitignore and re-run, or pass --allow-unignored to write anyway.`,
+      );
+    }
+    throw new Error(
+      `Refusing to write: could not confirm that ${shown}/${filename} is git-ignored (git check-ignore did not give a clear answer). ` +
+        `Fix the repository state, or pass --allow-unignored to write anyway.`,
+    );
+  }
 }
 
 export function run(argv = process.argv.slice(2)) {
