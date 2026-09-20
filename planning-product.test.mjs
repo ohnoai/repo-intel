@@ -260,12 +260,12 @@ describe("product collector", () => {
 
   it("reports partial evidence when the source collection cap truncates candidates", () => {
     const root = fixture();
-    for (let index = 0; index < 161; index += 1) write(root, `src/source-${String(index).padStart(3, "0")}.ts`, "export const value = true;\n");
+    for (let index = 0; index < 501; index += 1) write(root, `src/source-${String(index).padStart(3, "0")}.ts`, "export const value = true;\n");
 
     const result = collectProduct({ root });
 
     expect(result.status).toBe("partial");
-    expect(result.records[0].inspectedSourceFiles).toBe(160);
+    expect(result.records[0].inspectedSourceFiles).toBe(500);
     expect(result.warnings).toEqual(["Product source collection was bounded."]);
   });
 
