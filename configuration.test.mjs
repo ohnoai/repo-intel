@@ -821,6 +821,9 @@ describe("repository intelligence delivery", () => {
     const serialized = JSON.stringify(result);
 
     expect(result.status).toBe("complete");
+    // S3 step 5: delivery has nothing to move to observations, so every envelope still
+    // carries an empty array. Fails if the key is dropped or reverted.
+    expect(result.observations).toEqual([]);
     expect(workflow.name).toBe("Fixture Delivery");
     expect(workflow.triggers).toEqual(["push", "workflow_dispatch"]);
     expect(workflow.jobs).toContainEqual(
@@ -1041,6 +1044,8 @@ describe("repository intelligence delivery", () => {
     expect(result.status).toBe("unavailable");
     expect(result.records).toEqual([]);
     expect(result.metadata.evidenceLabels).toEqual({ default: "unresolved", fields: {} });
+    // S3 step 5: the unavailable envelope also carries an empty observations array.
+    expect(result.observations).toEqual([]);
   });
 
   it("does not read delivery symlinks, including links that stay inside the root", () => {

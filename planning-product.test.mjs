@@ -205,6 +205,9 @@ describe("product collector", () => {
     const result = collectProduct({ root });
 
     expect(result.status).toBe("complete");
+    // S3 step 5: product has nothing to move to observations, so every envelope still
+    // carries an empty array. Fails if the key is dropped or reverted.
+    expect(result.observations).toEqual([]);
     expect(result.metadata.product).toBeNull();
     expect(result.metadata.signals).toEqual([]);
     expect(result.metadata.riskSurfaces).toEqual([]);
@@ -349,5 +352,7 @@ describe("product collector", () => {
     expect(result.status).toBe("unavailable");
     expect(result.metadata.riskSurfaces).toEqual([]);
     expect(result.metadata.evidenceLabels).toEqual({ default: "unresolved", fields: {} });
+    // S3 step 5: the unavailable envelope also carries an empty observations array.
+    expect(result.observations).toEqual([]);
   });
 });

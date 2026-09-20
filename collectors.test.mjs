@@ -175,6 +175,9 @@ describe("repository file inventory", () => {
     const paths = result.records.map((record) => record.path);
 
     expect(result.status).toBe("complete");
+    // S3 step 5: files has nothing to move to observations, so every envelope still
+    // carries an empty array. Fails if the key is dropped or reverted.
+    expect(result.observations).toEqual([]);
     expect(paths).toContain("src/kept.ts");
     expect(paths).toContain("src/build/kept.ts");
     expect(paths).toContain("src/dist/kept.ts");
@@ -342,6 +345,8 @@ describe("repository file inventory", () => {
       default: "unresolved",
       fields: {},
     });
+    // S3 step 5: the unavailable envelope also carries an empty observations array.
+    expect(result.observations).toEqual([]);
   });
 });
 
