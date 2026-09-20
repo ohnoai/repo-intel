@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { join } from "node:path";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 
@@ -233,5 +233,46 @@ describe("repository intelligence export", () => {
       }),
     );
     expect(readFileSync(join(output, "summary.md"), "utf8")).toContain("Raw diffs included: false.");
+  });
+});
+
+describe("git-ignore guard on the output directory", () => {
+  // A Git repository whose global excludes can't leak in from the machine running the tests.
+  function gitFixture() {
+    const { directory, root } = fixture();
+    execFileSync("git", ["init", "--initial-branch=main"], { cwd: root });
+    execFileSync("git", ["config", "core.excludesFile", join(directory, "no-global-excludes")], { cwd: root });
+    return { directory, root };
+  }
+
+  it("refuses to write, and writes nothing, when the output directory is not git-ignored", () => {
+    const { root } = gitFixture();
+
+    expect(() => run(["--root", root])).toThrow(/not git-ignored.*--allow-unignored/s);
+    expect(existsSync(join(root, "tmp"))).toBe(false);
+  });
+
+  it("writes when the repository's .gitignore covers the output directory", () => {
+    const { root } = gitFixture();
+    writeFileSync(join(root, ".gitignore"), "tmp/\n");
+
+    const paths = run(["--root", root]);
+
+    expect(paths).toHaveLength(2);
+    expect(existsSync(join(root, "tmp", "repository-intelligence", "evidence-bundle.json"))).toBe(true);
+  });
+
+  it("writes anyway with --allow-unignored", () => {
+    const { root } = gitFixture();
+
+    const paths = run(["--root", root, "--allow-unignored"]);
+
+    expect(paths).toHaveLength(2);
+  });
+
+  it("does not apply to a directory that is not a Git repository", () => {
+    const { root } = fixture();
+
+    expect(run(["--root", root])).toHaveLength(2);
   });
 });
