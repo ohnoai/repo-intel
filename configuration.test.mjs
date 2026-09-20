@@ -250,9 +250,13 @@ describe("repository intelligence configuration", () => {
     expect(serialized).not.toContain(commentValue);
     expect(serialized).not.toContain(privateName);
     expect(serialized).not.toContain(emailPath);
-    expect(
-      result.warnings.some((warning) => warning.includes("Client-prefixed environment variable")),
-    ).toBe(true);
+    // S3: this is an observation, not a warning -- a client-prefixed variable also
+    // reached from server code is a fact about the repository, not a collection
+    // failure, so it must not demote status (docs/decisions/2026-09-20-warnings-vs-observations.md 2.4).
+    expect(result.observations).toContainEqual({
+      id: "client-prefixed-var-in-server-code",
+      message: "Client-prefixed environment variable evidence also appears in server code: VITE_PUBLIC_URL.",
+    });
   });
 
   it("keeps only bounded, non-value environment comments", () => {
@@ -385,7 +389,7 @@ describe("repository intelligence configuration", () => {
     }
   });
 
-  it("collects literal indirect access and warns for unresolved environment access", () => {
+  it("collects literal indirect access and records unresolved environment access as an observation", () => {
     const { root } = createFixture();
 
     writeFixtureFile(
@@ -443,9 +447,48 @@ describe("repository intelligence configuration", () => {
       classification: "server-only",
       accessStyles: ["process.env['NAME']"],
     });
+    // S3: unresolved access is an observation, not a warning -- the source was fully
+    // read, so nothing was lost (docs/decisions/2026-09-20-warnings-vs-observations.md 2.4).
     expect(
-      result.warnings.filter((warning) => warning.includes("could not be resolved statically")),
+      result.observations.filter(
+        (observation) => observation.id === "env-access-not-statically-resolvable",
+      ),
     ).toHaveLength(2);
+  });
+
+  it("reports complete when every finding is an observation, not a warning (S3)", () => {
+    const { root } = createFixture();
+
+    writeFixtureFile(root, ".env.example", "VITE_SHARED=your-public-value\n");
+    writeFixtureFile(
+      root,
+      "api/server.ts",
+      [
+        "const shared = process.env.VITE_SHARED;",
+        "const dynamic = process.env[pickName()];",
+      ].join("\n"),
+    );
+
+    const result = collectConfiguration({ root });
+
+    // Both findings here are exactly the two events S3 moved off `warnings`: a
+    // client-prefixed variable also read from server code, and an environment access
+    // that can't be resolved statically (a computed key here, not a string literal).
+    // Neither is a collection failure, so a repository with only these findings must
+    // still report `complete` (docs/decisions/2026-09-20-warnings-vs-observations.md 2.4).
+    expect(result.warnings).toEqual([]);
+    expect(result.status).toBe("complete");
+    expect(result.observations).toEqual([
+      {
+        id: "client-prefixed-var-in-server-code",
+        message:
+          "Client-prefixed environment variable evidence also appears in server code: VITE_SHARED.",
+      },
+      {
+        id: "env-access-not-statically-resolvable",
+        message: "An environment variable access could not be resolved statically: api/server.ts:2.",
+      },
+    ]);
   });
 
   it.each([
