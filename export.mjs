@@ -8,6 +8,7 @@ import { collectConfiguration } from "./lib/collect-config.mjs";
 import { collectDelivery } from "./lib/collect-delivery.mjs";
 import { collectPlanning } from "./lib/collect-planning.mjs";
 import { collectProduct } from "./lib/collect-product.mjs";
+import { classifyGitWorkTreeProbe } from "./lib/git-worktree-probe.mjs";
 import { runCommand } from "./lib/run-command.mjs";
 import {
   assertSanitizedMetadata,
@@ -304,9 +305,20 @@ Options:
 
 function assertOutputGitIgnored(root, outputDirectory) {
   const rootPath = repositoryRootPath(root);
-  const inside = runCommand("git", ["rev-parse", "--is-inside-work-tree"], { cwd: rootPath });
-  // Not a Git working tree (or no git): nothing here can be committed by accident.
-  if (!inside.ok || inside.stdout.trim() !== "true") return;
+  const workTree = classifyGitWorkTreeProbe(
+    runCommand("git", ["rev-parse", "--is-inside-work-tree"], { cwd: rootPath }),
+    rootPath,
+  );
+  // Genuinely not a Git working tree (or Git isn't installed): nothing here can be
+  // committed by accident. A failure Git didn't explain is not that, so it fails closed.
+  if (workTree === "not-a-repo" || workTree === "git-missing" || workTree === "outside-worktree") return;
+  if (workTree === "unknown") {
+    throw new Error(
+      "Refusing to write: could not tell whether this directory is inside a Git repository " +
+        "(git failed or timed out, and a .git entry exists here or above). " +
+        "Re-run, fix the repository state, or pass --allow-unignored to write anyway.",
+    );
+  }
 
   const probe = resolve(outputDirectory, BUNDLE_FILENAME);
   const ignored = runCommand("git", ["check-ignore", "-q", "--", probe], { cwd: rootPath });

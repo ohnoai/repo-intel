@@ -270,6 +270,15 @@ describe("git-ignore guard on the output directory", () => {
     expect(paths).toHaveLength(2);
   });
 
+  it("fails closed when Git cannot read a directory that has a .git entry", () => {
+    const { root } = fixture();
+    mkdirSync(join(root, ".git"));
+
+    expect(() => run(["--root", root])).toThrow(/could not tell whether this directory is inside a Git repository/);
+    expect(existsSync(join(root, "tmp"))).toBe(false);
+    expect(run(["--root", root, "--allow-unignored"])).toHaveLength(2);
+  });
+
   it("does not apply to a directory that is not a Git repository", () => {
     const { root } = fixture();
 

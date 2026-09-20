@@ -783,4 +783,52 @@ describe("Git collector failure handling", () => {
     expect(result.metadata.repository.isGitRepository).toBe(false);
     expect(serialized).not.toContain(normalizeRepositoryPath(root));
   });
+
+  it("still reports a plain non-zero exit outside any repository as not a repository", () => {
+    const { root } = createFixture();
+
+    const result = collectGitInventory({ root, runner: () => commandResult("", false) });
+
+    expect(result.status).toBe("unavailable");
+    expect(result.metadata.repository.isGitRepository).toBe(false);
+    expect(result.warnings).toEqual(["The requested directory is not a Git worktree."]);
+  });
+
+  it("reports unresolved, not not-a-repository, when Git fails inside a directory with a .git entry", () => {
+    const { root } = createFixture();
+    mkdirSync(join(root, ".git"));
+
+    const result = collectGitInventory({ root, runner: () => commandResult("", false) });
+
+    expect(result.status).toBe("unavailable");
+    expect(result.metadata.repository.isGitRepository).toBeNull();
+    expect(result.metadata.repository.isRepositoryRoot).toBeNull();
+    expect(result.warnings[0]).toMatch(/could not determine whether this directory is a repository/);
+  });
+
+  it("reports unresolved when the Git probe times out", () => {
+    const { root } = createFixture();
+    const timedOut = () => ({
+      ok: false,
+      status: null,
+      stdout: "",
+      stderr: "",
+      error: { code: "ETIMEDOUT", message: "Command timed out." },
+    });
+
+    const result = collectGitInventory({ root, runner: timedOut });
+
+    expect(result.metadata.repository.isGitRepository).toBeNull();
+    expect(result.warnings[0]).toMatch(/could not determine whether this directory is a repository/);
+  });
+
+  gitIt("reports unresolved for a directory whose .git entry real Git cannot read", () => {
+    const { root } = createFixture();
+    mkdirSync(join(root, ".git"));
+
+    const result = collectGitInventory({ root });
+
+    expect(result.status).toBe("unavailable");
+    expect(result.metadata.repository.isGitRepository).toBeNull();
+  });
 });
