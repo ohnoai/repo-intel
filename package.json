@@ -5,6 +5,9 @@
   "type": "module",
   "license": "MIT",
   "description": "Deterministic, offline, read-only repository intelligence exporter. Walks any repository via --root and emits a sanitized evidence bundle (files, git, configuration, delivery, planning, product) for grounding architecture analysis.",
+  "bin": {
+    "repo-intel": "bin/repo-intel.mjs"
+  },
   "scripts": {
     "export": "node export.mjs",
     "test": "vitest run",

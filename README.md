@@ -29,8 +29,16 @@ node export.mjs --root /path/to/some/repository
 Writes two artifacts to `<root>/tmp/repository-intelligence/`: `evidence-bundle.json` (the full
 sanitized evidence) and `summary.md` (a per-collector status table plus warnings).
 
+**Git-ignore guard.** If the target is a Git repository and `tmp/repository-intelligence/` is not
+git-ignored there, the exporter refuses to write and tells you to add `tmp/` to that repository's
+`.gitignore`, so the bundle can't be committed by accident. `--allow-unignored` overrides the
+check. Directories that aren't Git repositories are unaffected.
+
+With `npm link` run once in this checkout, `repo-intel --root <path>` works from any directory
+(`--root` defaults to the current directory).
+
 ```
-Usage: node export.mjs [options]
+Usage: repo-intel [options]
 
 Options:
  --root <path> Repository root (default: current directory)

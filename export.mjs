@@ -8,6 +8,7 @@ import { collectConfiguration } from "./lib/collect-config.mjs";
 import { collectDelivery } from "./lib/collect-delivery.mjs";
 import { collectPlanning } from "./lib/collect-planning.mjs";
 import { collectProduct } from "./lib/collect-product.mjs";
+import { runCommand } from "./lib/run-command.mjs";
 import {
   assertSanitizedMetadata,
   sanitizeMetadataText,
@@ -259,6 +260,7 @@ export function parseArguments(argv) {
     overwrite: false,
     includeDiff: false,
     baseRef: undefined,
+    allowUnignored: false,
     help: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -266,6 +268,7 @@ export function parseArguments(argv) {
     if (argument === "--help" || argument === "-h") options.help = true;
     else if (argument === "--overwrite") options.overwrite = true;
     else if (argument === "--include-diff") options.includeDiff = true;
+    else if (argument === "--allow-unignored") options.allowUnignored = true;
     else if (argument === "--base") {
       const value = argv[++index];
       if (!value) throw new Error(`${argument} requires a value.`);
@@ -281,7 +284,7 @@ export function parseArguments(argv) {
   return options;
 }
 
-export const HELP = `Usage: node export.mjs [options]
+export const HELP = `Usage: repo-intel [options]
 
 Options:
   --root <path>       Repository root (default: current directory)
@@ -291,11 +294,36 @@ Options:
                        directory explicit on the command line, not to relocate output.
   --overwrite         Explicitly replace existing evidence artifacts
   --include-diff      Include sanitized Git diff summary metadata (never raw patches)
+  --allow-unignored   Write even if the output directory is not git-ignored in the target
+                       repository (default: refuse, so the bundle can't be committed by accident)
   --base <ref>        Explicit diff base (default precedence: merge-base(HEAD, main)
                        -> the branch's own upstream -> HEAD, with a warning rather than
                        a failure when it resolves to HEAD)
   --help              Show this help
 `;
+
+function assertOutputGitIgnored(root, outputDirectory) {
+  const rootPath = repositoryRootPath(root);
+  const inside = runCommand("git", ["rev-parse", "--is-inside-work-tree"], { cwd: rootPath });
+  // Not a Git working tree (or no git): nothing here can be committed by accident.
+  if (!inside.ok || inside.stdout.trim() !== "true") return;
+
+  const probe = resolve(outputDirectory, BUNDLE_FILENAME);
+  const ignored = runCommand("git", ["check-ignore", "-q", "--", probe], { cwd: rootPath });
+  if (ignored.status === 0) return;
+
+  const shown = relative(rootPath, resolve(outputDirectory)).split("\\").join("/");
+  if (ignored.status === 1) {
+    throw new Error(
+      `Refusing to write: ${shown} is not git-ignored in this repository, so the exported evidence could be committed by accident. ` +
+        `Add "tmp/" to .gitignore and re-run, or pass --allow-unignored to write anyway.`,
+    );
+  }
+  throw new Error(
+    `Refusing to write: could not confirm that ${shown} is git-ignored (git check-ignore did not give a clear answer). ` +
+      `Fix the repository state, or pass --allow-unignored to write anyway.`,
+  );
+}
 
 export function run(argv = process.argv.slice(2)) {
   const options = parseArguments(argv);
@@ -305,6 +333,7 @@ export function run(argv = process.argv.slice(2)) {
   }
   const root = repositoryRootPath(options.root);
   const outputDirectory = resolveOutputDirectory(root, options.output);
+  if (!options.allowUnignored) assertOutputGitIgnored(root, outputDirectory);
   const bundle = composeEvidence({ root, includeDiff: options.includeDiff, baseRef: options.baseRef });
   const paths = writeArtifacts({ root, outputDirectory, bundle, overwrite: options.overwrite });
   console.log(`Wrote ${paths.length} repository intelligence artifacts to ${options.output}.`);
