@@ -38,7 +38,11 @@ and the tool lost nothing by it. Observations never change status.
 **2.2 Shape.** Each collector envelope gains `observations: {id, message}[]`, next to `warnings`.
 `id` is a stable kebab-case string assigned in the collector (for example
 `env-access-not-statically-resolvable`). `message` passes through the same sanitizer as warnings.
-Lists are de-duplicated and sorted, as `warnings` are today. The bundle gains
+Lists are de-duplicated on the exact `(id, message)` pair and sorted by `id`, then `message`,
+using code-unit comparison (`compareText`), by `buildObservations` in `lib/observations.mjs`.
+The planning and product collectors already finalize `warnings` the same way
+(`[...new Set(warnings)].sort(compareText)`); the other four do not sort them today. The
+bundle gains
 `aggregate: { warnings: {collector, message}[], observations: {collector, id, message}[] }` and a
 top-level `status`.
 
@@ -114,7 +118,9 @@ One pull request. Steps in order, each small enough to review alone:
 6. `export.mjs`: `aggregate`, top-level `status`, summary rendering.
 7. A test asserting every collector emits `observations` as an array and the aggregate counts
    match the per-collector counts. This is the backstop for the plan's open risk: a missed
-   collector desyncs the rollup.
+   collector desyncs the rollup. It also asserts that every observation has a non-empty
+   string `id` and `message`, so a collector that forgets an id fails a test instead of
+   emitting an entry with no id (which JSON output would drop without complaint).
 
 ## 6. Acceptance check
 
