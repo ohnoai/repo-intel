@@ -189,3 +189,11 @@ One pull request. Steps in order, each small enough to review alone:
   consumers, if any, are not known.
 - Reclassification is a judgment call per event. The table in 2.4 is the reviewable record of
   those calls.
+- A known false positive got quieter. The planning collector reports a required document as
+  absent when it exists on disk but is not also declared under `authorityDocuments` or found
+  through a default path, a roadmap path, or a planning directory (reproduced 2026-09-20).
+  Before S3 that demoted the collector to `partial`. After S3 the collector reads `complete`
+  and the false claim appears only under Observations. Step 4 keeps the message and the
+  behavior on purpose, because S3 moves events between channels and does not change what
+  counts as found. Decision 3.2 covered a document that is truly missing, not this case.
+  Tracked as `NEW-PLANNING-REQUIRED-DISCOVERY` in `docs/03-current-state.md`.
