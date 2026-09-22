@@ -226,6 +226,36 @@ One pull request. Steps in order, each small enough to review alone:
    other test looks at it there, and the step 6 aggregate loops over every collector, so a
    missing key on either path would crash the export for a non-git directory.
 
+   This step is really two things, in two places, not one new test:
+   - Two one-line additions to existing git unit tests in `collectors.test.mjs`:
+     `"skips diff collection entirely when the caller does not want it"` (the
+     `includeDiff: false` case) and `"returns unavailable output for a directory outside a
+     Git repository"` (the not-a-repo case). Add `expect(result.observations).toEqual([]);`
+     to each. Both already use the right fixture; nothing else about them changes.
+   - One new test in `export.test.mjs`, near the existing "bundle-wide status and aggregate
+     wiring in composeEvidence" describe block, for the rollup itself.
+   The rollup test needs at least one real observation, or `every(...)` over an empty array
+   trivially passes and the non-empty-id/message assertion tests nothing. The default
+   `fixture()` in `export.test.mjs` produces zero observations across all six collectors.
+   Build on it: `git init` the fixture (so `git` is not `unavailable`) and add the
+   dynamic-environment-access file already used in `configuration.test.mjs`
+   (`process.env[pickName()]`) so `configuration` emits a real
+   `env-access-not-statically-resolvable` observation. That is enough; do not also try to
+   force every collector to emit one.
+   Against that fixture's real `composeEvidence` result, assert, generically over
+   `Object.entries(bundle.collectors)`:
+   - `Array.isArray(collector.observations)` holds for all six.
+   - Every observation across all six has a non-empty string `id` and a non-empty string
+     `message`.
+   - The sum of each collector's own `observations.length` equals
+     `bundle.aggregate.observations.length`, and the same for `warnings`. This checks the
+     wiring in `composeEvidence` and `buildAggregate` together, which the step 6 unit tests
+     (hand-built collectors) do not: those only exercise `buildAggregate` in isolation, not
+     that every real collector actually reaches it.
+   Do not touch `collect-*.mjs`. If this test finds a collector missing `observations`, that
+   is a regression in an earlier step to fix there, not something to patch inside
+   `export.test.mjs`.
+
 ## 6. Acceptance check
 
 - `npm test` passes, with new tests covering each moved event and the rollup.
