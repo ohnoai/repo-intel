@@ -1,8 +1,10 @@
 # Warnings vs. Observations and Aggregate Status (S3)
 
-> **STATUS: PROPOSED, owner decisions settled (2026-09-20). Design only, no code written.**
-> Section 3 records the three owner decisions; each took the recommendation. This stays a
-> proposal until the work ships and the acceptance check in section 6 passes.
+> **STATUS: IMPLEMENTED on `feat/s3-observations` (2026-09-22).** All seven steps in section 5
+> are committed and `npm test` passes (174 tests). The section 6 acceptance check has been
+> confirmed against `sliceboard`. Owner decisions in section 3 are settled, each as the
+> recommended option. Still pending: the OpenCode `verifier-final` review of the whole branch,
+> and the pull request.
 
 ## 1. Context
 
