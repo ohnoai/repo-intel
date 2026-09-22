@@ -401,6 +401,50 @@ describe("bundle-wide status and aggregate wiring in composeEvidence", () => {
       ),
     ).toBe(true);
   });
+
+  it("keeps every collector's observations array in sync with the aggregate rollup (S3 step 7)", () => {
+    const { root } = fixture();
+    // A real, resolvable observation from a real collector: without this, `every` below
+    // would pass vacuously over an empty array and assert nothing
+    // (docs/decisions/2026-09-20-warnings-vs-observations.md section 5 step 7).
+    mkdirSync(join(root, "api"), { recursive: true });
+    writeFileSync(join(root, "api", "dynamic-env.ts"), "const dynamic = process.env[pickName()];\n");
+    // git init the fixture so the git collector is not "unavailable" for this test.
+    execFileSync("git", ["init", "--initial-branch=main"], { cwd: root });
+    execFileSync("git", ["config", "user.name", "Fixture Export"], { cwd: root });
+    execFileSync("git", ["config", "user.email", ["fixture", "export", "@", "example", ".test"].join("")], { cwd: root });
+    execFileSync("git", ["add", "--all"], { cwd: root });
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: root });
+
+    const bundle = composeEvidence({ root });
+    const collectorEntries = Object.entries(bundle.collectors);
+
+    // Backstop for the plan's open risk: a collector that forgets `observations` desyncs
+    // the rollup.
+    expect(collectorEntries.every(([, collector]) => Array.isArray(collector.observations))).toBe(true);
+
+    const allObservations = collectorEntries.flatMap(([, collector]) => collector.observations);
+    expect(allObservations.length).toBeGreaterThan(0);
+    // A collector that forgets an id would emit an entry JSON output drops without
+    // complaint, so this fails loudly instead.
+    expect(
+      allObservations.every(
+        (observation) =>
+          typeof observation.id === "string" &&
+          observation.id.length > 0 &&
+          typeof observation.message === "string" &&
+          observation.message.length > 0,
+      ),
+    ).toBe(true);
+
+    // Checks the wiring in composeEvidence and buildAggregate together: every real
+    // collector's own lists actually reach the aggregate, not just buildAggregate in
+    // isolation against hand-built collectors.
+    const observationsSum = collectorEntries.reduce((sum, [, collector]) => sum + collector.observations.length, 0);
+    const warningsSum = collectorEntries.reduce((sum, [, collector]) => sum + collector.warnings.length, 0);
+    expect(observationsSum).toBe(bundle.aggregate.observations.length);
+    expect(warningsSum).toBe(bundle.aggregate.warnings.length);
+  });
 });
 
 function sectionBetween(text, startHeading, endHeading) {

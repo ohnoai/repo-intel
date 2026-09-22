@@ -655,6 +655,10 @@ gitDescribe("Git inventory", () => {
     // Non-diff collection is unaffected.
     expect(result.metadata.currentBranch).toBe("feature");
     expect(result.status).toBe("complete");
+    // S3 step 7: the includeDiff:false early return runs before the diff base is
+    // resolved, so it can never carry the diff-base-resolved-to-head observation, but it
+    // must still carry the (empty) observations array added in step 3.
+    expect(result.observations).toEqual([]);
   });
 
   it("rejects option-like base refs before invoking Git", () => {
@@ -796,6 +800,9 @@ describe("Git collector failure handling", () => {
     expect(result.status).toBe("unavailable");
     expect(result.metadata.repository.isGitRepository).toBe(false);
     expect(serialized).not.toContain(normalizeRepositoryPath(root));
+    // S3 step 7: the unavailable envelope must still carry the (empty) observations
+    // array added in step 3, since the step 6 aggregate loops over every collector.
+    expect(result.observations).toEqual([]);
   });
 
   it("still reports a plain non-zero exit outside any repository as not a repository", () => {
