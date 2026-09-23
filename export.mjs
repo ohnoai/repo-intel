@@ -134,12 +134,6 @@ function validateArtifact(value) {
   return value;
 }
 
-function withoutDiff(inventory) {
-  const metadata = { ...inventory.metadata };
-  delete metadata.diff;
-  return { ...inventory, metadata };
-}
-
 /**
  * Flattens every collector's own `warnings` and `observations` into two bundle-wide
  * lists. Collectors are walked in `compareText` order of their names (the order the
@@ -190,8 +184,6 @@ export function composeEvidence({ root = process.cwd(), includeDiff = false, bas
     planning: collectPlanning({ root: repositoryRoot }),
     product: collectProduct({ root: repositoryRoot }),
   };
-
-  if (!includeDiff) collectors.git = withoutDiff(collectors.git);
 
   return {
     schemaVersion: SCHEMA_VERSION,

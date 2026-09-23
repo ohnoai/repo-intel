@@ -131,12 +131,20 @@ describe("repository intelligence export", () => {
     })).toThrow(/Sanitization validation failed/);
   });
 
-  it("produces deterministic artifacts and excludes diff by default", () => {
+  it("produces deterministic artifacts and stubs (never deletes) the diff key by default", () => {
     const { root } = fixture();
     const first = composeEvidence({ root });
     const second = composeEvidence({ root });
     expect(first).toEqual(second);
-    expect(first.collectors.git.metadata).not.toHaveProperty("diff");
+    // S6/RI-07(b): withoutDiff() is gone -- the diff key is always present now, never
+    // deleted. This fixture is not a Git repository, so the collector never gets far
+    // enough to attempt a diff either way; the key is the untouched initialMetadata() stub.
+    expect(first.collectors.git.metadata.diff).toEqual({
+      baseRef: null,
+      changedFiles: [],
+      numstat: [],
+      omitted: true,
+    });
     expect(JSON.stringify(first)).not.toContain("patch");
   });
 
@@ -145,6 +153,28 @@ describe("repository intelligence export", () => {
     const bundle = composeEvidence({ root, includeDiff: true });
     expect(bundle.collectors.git.metadata.diff).toEqual(expect.objectContaining({ changedFiles: [], numstat: [] }));
     expect(bundle.policy.rawDiffsIncluded).toBe(false);
+  });
+
+  it("marks the diff omitted vs. attempted through the full composeEvidence path, both includeDiff values (S6)", () => {
+    const { root } = fixture();
+    execFileSync("git", ["init", "--initial-branch=main"], { cwd: root });
+    execFileSync("git", ["config", "user.name", "Fixture Export"], { cwd: root });
+    execFileSync("git", ["config", "user.email", ["fixture", "diff", "@", "example", ".test"].join("")], { cwd: root });
+    execFileSync("git", ["add", "--all"], { cwd: root });
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: root });
+
+    const withoutDiff = composeEvidence({ root, includeDiff: false });
+    expect(withoutDiff.collectors.git.metadata.diff).toEqual({
+      baseRef: null,
+      changedFiles: [],
+      numstat: [],
+      omitted: true,
+      evidenceLabels: { default: "unresolved", fields: { omitted: "observed_fact" } },
+    });
+
+    const withDiff = composeEvidence({ root, includeDiff: true });
+    expect(withDiff.collectors.git.metadata.diff.omitted).toBe(false);
+    expect(withDiff.collectors.git.metadata.diff.baseRef).not.toBeNull();
   });
 
   it("sets schemaVersion to the current SCHEMA_VERSION (3)", () => {
