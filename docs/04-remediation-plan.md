@@ -91,10 +91,10 @@ Baseline is **S0's commit** (`60d7e9c`); **each subsequent slice is its own comm
 
 - **S0 · Commit the working tree as the baseline. ✅ DONE** (`60d7e9c`). The only honest rollback
  point; every "revertable" claim depends on it.
-- **S4 · Resolve `tmp/` hazard + `--output`. ✅ IMPLEMENTED, UNCOMMITTED (2026-07-26).** Gitignored
+- **S4 · Resolve `tmp/` hazard + `--output`. ✅ IMPLEMENTED, COMMITTED (2026-07-26).** Gitignored
  `tmp/repository-intelligence/` (not blanket `tmp/`); documented (not removed) the constrained
  `--output` flag in `--help`. *Depended on S0.*
-- **S1 · Privacy boundary (re-architected). ✅ IMPLEMENTED, UNCOMMITTED (2026-07-26).**
+- **S1 · Privacy boundary (re-architected). ✅ IMPLEMENTED, COMMITTED (2026-07-26).**
  Constrained-superset validator (C3) + redactor⊇validator by shared detector functions (not a
  separately-maintained parity test - `findUnsanitizedLocalPaths` backs both the redaction and the
  fatal check) + sentinel exclusion (verified: `[REDACTED:*]` output never re-triggers) + PowerShell
@@ -108,34 +108,32 @@ Baseline is **S0's commit** (`60d7e9c`); **each subsequent slice is its own comm
  focused suite 77→96, full app suite still 100% green, lint clean, typecheck clean (one pre-existing,
  unrelated `SliceBoardApp.tsx` error/warning untouched). *Depended on S0.*
  - **Implementation note:** built and verified in a sandbox with no git access to this worktree (its
- `.git` pointer resolves to a Windows path outside the sandbox) - so this is uncommitted,
- working-tree-only progress from a single session, not yet independently re-verified the way S0's
- baseline was. See `03-current-state.md`'s 2026-07-26 update.
-- **S2 · Git-base policy. ✅ IMPLEMENTED, UNCOMMITTED (2026-07-26, second session).**
+ `.git` pointer resolves to a Windows path outside the sandbox), so this landed as working-tree-only
+ progress from a single session before being committed separately. See `03-current-state.md`'s
+ 2026-07-26 update for that original context; confirmed present and committed on `main` as of the
+ 2026-09-22 docs pass.
+- **S2 · Git-base policy. ✅ IMPLEMENTED, COMMITTED (2026-07-26, second session).**
  `--base` + merge-base(HEAD, main) → `@{upstream}` → `HEAD` precedence + HEAD-resolution warning
  (C4), threaded through `composeEvidence`/`run()`. Regression-tested against the exact original
  symptom (see `03-current-state.md`). *Depended on S0.*
-- **S3 · Warnings vs observations + aggregate status.** (C1/C2). *Depends on S1. Still open - *
- note the S2 HEAD-resolution warning (above) currently flips `status` to `partial` on an otherwise
- healthy repo, precisely the RI-STATUS problem this slice exists to fix; S3 should reclassify it as
- an `observations[]` entry, not remove it.
-- **S5 · Workflow provenance typing. ✅ IMPLEMENTED, UNCOMMITTED (2026-07-26, second session).**
+- **S3 · Warnings vs observations + aggregate status. ✅ IMPLEMENTED (2026-09-22).** (C1/C2). Merged
+ to `main` via PR #6 (`c8351c7`); reclassified the S2 HEAD-resolution warning as an
+ `observations[]` entry (`diff-base-resolved-to-head`), fixing RI-STATUS. *Depended on S1.*
+- **S5 · Workflow provenance typing. ✅ IMPLEMENTED, COMMITTED (2026-07-26, second session).**
  Typed `{name, provenance}` records (C5), shell-reference CI-builtin exclusion, and a shared
  merge helper so multi-source names keep every provenance. Breaking shape change; the tests it broke
  were fixed in the same slice (see `03-current-state.md`). *Depended on S0.*
 - **S6 · Schema v2 + structural guard.** (C1/C7); update the tests the shape change breaks in the same
- slice. *Depends on S2, S3, S5. S2 and S5 are done; still blocked on S3.*
+ slice. *Depends on S2, S3, S5 - all three now done. Unblocked, not yet started.*
 - **S7 · Wire focused tests + regression-guard contracts.** fs-access instrumentation for the `.env`
  boundary (closes NEW-PRIVACY-TESTGAP), the redaction↔detection drift test, an explicit
  `schemaVersion === 2` assertion, npm scripts, end-to-end real-bundle validation, and correcting the
  task record's `status`. *Depends on all. Still open.*
 
-**Recommended path:** S0 (done) → S4 (done) → S1 (done) → **S2 and S5 (done, this session)** →
-S3 (next) → S6 → S7.
+**Recommended path:** S0 → S4 → S1 → S2 → S5 → S3 (all done, all committed to `main`) → **S6 (next)**
+→ S7.
 
-**Next up:** review and commit S2 and S5 as two separate commits (per the "each slice is its own
-commit" discipline above; S4 and S1 are already committed). Then S3 - the remaining precondition for
-S6 - followed by S6 and S7 in order.
+**Next up:** S6, now unblocked - then S7.
 
 ## 6. Explicit non-goals (V1)
 
