@@ -54,6 +54,10 @@ authoritative and the repo is ground truth.**
 - Decision record (ADR, IMPLEMENTED): [`decisions/2026-09-20-warnings-vs-observations.md`](decisions/2026-09-20-warnings-vs-observations.md)
   - the S3 design: which collection events are warnings and which are observations, the
   aggregate status rule, and the settled owner decisions. Merged to `main` via PR #6 (`c8351c7`).
+- Decision record (ADR, IMPLEMENTED): [`decisions/2026-09-22-schema-v3-structural-guard.md`](decisions/2026-09-22-schema-v3-structural-guard.md)
+  - the S6 design: bumping `schemaVersion` to 3, always including the git `diff` key with an
+  `omitted` flag, and the fail-closed structural guard (including the evidence-labels record's
+  own deferred five-rule label checker). Committed to `main`.
 - The original build task record stayed behind in `ohnoai/sliceboard` at
   `docs/tasks/archive/2026/repository-intelligence-exporter.md` and was not moved here; it remains
   history in that repository. ⚠️ Its front-matter reads `status: complete`, which described a
@@ -66,8 +70,8 @@ authoritative and the repo is ground truth.**
 
 See [`03-current-state.md`](03-current-state.md) for the verified current state and the full
 defect ledger with per-item commit status, and [`04-remediation-plan.md`](04-remediation-plan.md)
-for what's left (S6 and S7 still open; S0-S5 done and committed to `main`, most recently S3, PR #6
-`c8351c7`). Evidence-labels v1 has shipped (see [`decisions/2026-08-07-evidence-labels.md`](decisions/2026-08-07-evidence-labels.md)).
+for what's left (**S7 still open**; S0-S6 done and committed to `main`, most recently S6). Schema
+is now v3; evidence-labels v1 has shipped (see [`decisions/2026-08-07-evidence-labels.md`](decisions/2026-08-07-evidence-labels.md)).
 Re-verify commit-status claims against this repository directly - several items in
 the ledger were last confirmed in a sandbox session without git access; see the notes inline in
 `03-current-state.md`.

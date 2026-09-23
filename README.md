@@ -138,9 +138,10 @@ content, so a redaction gap fails the write rather than silently shipping. Full 
 
 ## Status
 
-Not a finished v1. **174 tests pass across 7 files** as of 2026-09-22, verified with `npm test` in
-this repository. S0-S5 are done and committed to `main`; **S6 (schema v3 - evidence-labels claimed
-v2 first) and S7 (test-coverage hardening)** are still open - see
+Not a finished v1. **202 tests pass across 7 files** as of 2026-09-22, verified with `npm test` in
+this repository. S0-S6 are done and committed to `main` (schema now v3 - evidence-labels claimed
+v2 first; see [`docs/decisions/2026-09-22-schema-v3-structural-guard.md`](docs/decisions/2026-09-22-schema-v3-structural-guard.md)).
+**S7 (test-coverage hardening)** is still open - see
 [`docs/04-remediation-plan.md`](docs/04-remediation-plan.md).
 
 ## Development
