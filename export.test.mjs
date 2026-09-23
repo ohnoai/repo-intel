@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 
 import {
+  SCHEMA_VERSION,
   buildAggregate,
   bundleStatus,
   composeEvidence,
@@ -146,9 +147,10 @@ describe("repository intelligence export", () => {
     expect(bundle.policy.rawDiffsIncluded).toBe(false);
   });
 
-  it("sets schemaVersion to 2", () => {
+  it("sets schemaVersion to the current SCHEMA_VERSION (3)", () => {
     const { root } = fixture();
-    expect(composeEvidence({ root }).schemaVersion).toBe(2);
+    expect(SCHEMA_VERSION).toBe(3);
+    expect(composeEvidence({ root }).schemaVersion).toBe(SCHEMA_VERSION);
   });
 
   it("threads an explicit --base ref from parseArguments through composeEvidence into the Git collector (S2)", () => {

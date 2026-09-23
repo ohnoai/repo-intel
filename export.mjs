@@ -19,6 +19,11 @@ const DEFAULT_OUTPUT = "tmp/repository-intelligence";
 const BUNDLE_FILENAME = "evidence-bundle.json";
 const SUMMARY_FILENAME = "summary.md";
 
+// v2 was claimed by the evidence-labels rollout (docs/decisions/2026-08-07-evidence-labels.md
+// section 10.5); this is the S6 bump (docs/decisions/2026-09-20-warnings-vs-observations.md's
+// successor design record), not the first bump off v1.
+export const SCHEMA_VERSION = 3;
+
 function compareText(left, right) {
   return left < right ? -1 : left > right ? 1 : 0;
 }
@@ -189,7 +194,7 @@ export function composeEvidence({ root = process.cwd(), includeDiff = false, bas
   if (!includeDiff) collectors.git = withoutDiff(collectors.git);
 
   return {
-    schemaVersion: 2,
+    schemaVersion: SCHEMA_VERSION,
     status: bundleStatus(collectors),
     collectors,
     aggregate: buildAggregate(collectors),
