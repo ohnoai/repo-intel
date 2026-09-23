@@ -72,6 +72,22 @@ describe("repository intelligence export", () => {
     expect(readFileSync(join(output, "evidence-bundle.json"), "utf8")).not.toBe("old");
   });
 
+  it("rejects a malformed bundle before --overwrite deletes the existing target (S6)", () => {
+    const { root } = fixture();
+    const output = resolveOutputDirectory(root);
+    mkdirSync(output, { recursive: true });
+    writeFileSync(join(output, "evidence-bundle.json"), "old");
+
+    const malformed = { ...composeEvidence({ root }), extraTopLevelKey: true };
+
+    expect(() => writeArtifacts({ root, outputDirectory: output, bundle: malformed, overwrite: true })).toThrow(
+      /Bundle structure validation failed/,
+    );
+    // ensureWritableTarget's rmSync must never run for a bundle assertBundleShape rejects --
+    // --overwrite should not delete real output in exchange for writing nothing back.
+    expect(readFileSync(join(output, "evidence-bundle.json"), "utf8")).toBe("old");
+  });
+
   it("rejects direct writer use outside the repository root", () => {
     const { root, directory } = fixture();
     expect(() => writeArtifacts({
@@ -206,14 +222,18 @@ describe("repository intelligence export", () => {
 
     // No collector keys an object by collected data today, so this drives the guard
     // through the writer directly: a data-derived key must be redacted on the way out.
-    const written = writeArtifacts({
-      root,
-      outputDirectory: output,
-      bundle: { ...composeEvidence({ root }), byContact: { [email]: { count: 1 } } },
-    });
-    const bundle = JSON.parse(readFileSync(written[0], "utf8"));
+    // S6: the bundle root's key set is now fixed and fail-closed via assertBundleShape,
+    // so the probe lives inside a collector's own metadata instead of the bundle root
+    // (metadata's own key set stays open -- see the S6 design record's owner decision 3.3).
+    const bundle = composeEvidence({ root });
+    bundle.collectors.configuration.metadata.byContact = { [email]: { count: 1 } };
 
-    expect(Object.keys(bundle.byContact)).toEqual(["[REDACTED:email]"]);
+    const written = writeArtifacts({ root, outputDirectory: output, bundle });
+    const writtenBundle = JSON.parse(readFileSync(written[0], "utf8"));
+
+    expect(Object.keys(writtenBundle.collectors.configuration.metadata.byContact)).toEqual([
+      "[REDACTED:email]",
+    ]);
     expect(readFileSync(written[0], "utf8")).not.toContain(email);
   });
 

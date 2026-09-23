@@ -430,6 +430,11 @@ export function writeArtifacts({
   sanitizer = sanitizeEvidence,
 } = {}) {
   if (!outputDirectory) throw new Error("An output directory is required.");
+  // Fail closed on the raw bundle before anything else touches it -- before rendering the
+  // summary, before sanitizing, before the write-gate validator, and before
+  // ensureWritableTarget's rmSync (--overwrite must never delete existing artifacts in
+  // exchange for writing nothing back). See the S6 design record's owner decision 3.4.
+  assertBundleShape(bundle);
   assertDedicatedOutputDirectory(root, outputDirectory);
   const artifacts = [
     { path: resolve(outputDirectory, BUNDLE_FILENAME), value: sanitizer(bundle) },
