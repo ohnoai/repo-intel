@@ -114,6 +114,13 @@ export function sanitizeEvidence(value) {
   return recursivelySanitize(value);
 }
 
+// Thin, direct export of the walker below (S7): existing tests only exercised it
+// indirectly via the full writeArtifacts/run() path. sanitizeEvidence already had this
+// treatment; this gives validateArtifact the same direct unit-test surface.
+export function validateEvidence(value) {
+  return validateArtifact(value);
+}
+
 function validateArtifact(value) {
   if (typeof value === "string") {
     assertSanitizedMetadata(value);

@@ -14,6 +14,8 @@ import {
   renderSummary,
   resolveOutputDirectory,
   run,
+  sanitizeEvidence,
+  validateEvidence,
   writeArtifacts,
 } from "./export.mjs";
 
@@ -795,5 +797,58 @@ describe("Observations section in the rendered summary", () => {
     expect(configurationIndex).toBeGreaterThan(-1);
     expect(planningIndex).toBeGreaterThan(-1);
     expect(configurationIndex).toBeLessThan(planningIndex);
+  });
+});
+
+describe("sanitizeEvidence / validateEvidence direct walker tests (S7)", () => {
+  const secretValue = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890";
+  const emailKey = ["owner", "@", "example", ".test"].join("");
+  const localPathValue = String.raw`C:\Users\fixture\private-build`;
+
+  it("sanitizes a secret nested several levels deep, as both a key and a value", () => {
+    const nested = {
+      level1: {
+        [emailKey]: {
+          level3: [secretValue, { deep: localPathValue }],
+        },
+      },
+    };
+
+    const sanitized = sanitizeEvidence(nested);
+    const serialized = JSON.stringify(sanitized);
+
+    expect(serialized).not.toContain(secretValue);
+    expect(serialized).not.toContain(emailKey);
+    expect(serialized).not.toContain("private-build");
+    expect(() => validateEvidence(sanitized)).not.toThrow();
+  });
+
+  it("validateEvidence fatals on an unsanitized value nested inside an array inside an object", () => {
+    const nested = { safe: { alsoSafe: [secretValue] } };
+    expect(() => validateEvidence(nested)).toThrow(/Sanitization validation failed/);
+  });
+
+  it("validateEvidence fatals on an unsanitized nested object key, not just values", () => {
+    const nested = { safe: { [emailKey]: "fine" } };
+    expect(() => validateEvidence(nested)).toThrow(/Sanitization validation failed/);
+  });
+
+  it("round-trips an array of objects without losing sanitization on any element", () => {
+    const records = [
+      { id: "a", note: secretValue },
+      { id: "b", note: "clean" },
+    ];
+    const sanitized = sanitizeEvidence(records);
+
+    expect(JSON.stringify(sanitized)).not.toContain(secretValue);
+    expect(() => validateEvidence(sanitized)).not.toThrow();
+  });
+
+  it("sanitizeEvidence then validateEvidence is idempotent on an already-clean nested structure", () => {
+    const clean = { a: { b: ["clean value", { c: "also clean" }] } };
+    const once = sanitizeEvidence(clean);
+    const twice = sanitizeEvidence(once);
+    expect(twice).toEqual(once);
+    expect(() => validateEvidence(twice)).not.toThrow();
   });
 });
