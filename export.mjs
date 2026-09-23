@@ -174,6 +174,147 @@ export function bundleStatus(collectors) {
   return "complete";
 }
 
+const VALID_STATUSES = ["unavailable", "partial", "complete"];
+const REQUIRED_TOP_LEVEL_KEYS = ["schemaVersion", "status", "collectors", "aggregate", "policy"];
+const REQUIRED_COLLECTOR_NAMES = ["files", "git", "configuration", "delivery", "planning", "product"];
+const REQUIRED_ENVELOPE_KEYS = ["status", "records", "warnings", "observations", "metadata"];
+
+function shapeFailure(path, reason) {
+  throw new Error(`Bundle structure validation failed: ${path}: ${reason}`);
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+// Only the required keys are ever named in a failure message. An *unexpected* key is
+// reported by count alone -- it may be user/repository data (a data-derived map key, per
+// RI-KEY-SANITIZE), and echoing it here would defeat the point of validating before the
+// sanitize/redaction pass runs.
+function assertExactKeys(value, expectedKeys, path) {
+  if (!isPlainObject(value)) shapeFailure(path, "expected an object");
+  const expected = new Set(expectedKeys);
+  const actual = new Set(Object.keys(value));
+  const missing = expectedKeys.filter((key) => !actual.has(key));
+  if (missing.length > 0) shapeFailure(path, `missing required key(s): ${missing.join(", ")}`);
+  const extraCount = [...actual].filter((key) => !expected.has(key)).length;
+  if (extraCount > 0) shapeFailure(path, `contains ${extraCount} unexpected key(s)`);
+}
+
+function assertValidStatus(status, path) {
+  if (!VALID_STATUSES.includes(status)) {
+    shapeFailure(path, `expected one of ${VALID_STATUSES.join("/")}, got ${JSON.stringify(status)}`);
+  }
+}
+
+/**
+ * Light fail-closed structural guard (C7, D9): envelope-level key sets -- identical across
+ * all six collectors today -- plus a short, explicit list of named metadata keys real
+ * consumers depend on (the git diff subtree's `omitted` flag; the planning collector's
+ * `externalContext` object). Deliberately NOT a full per-collector metadata registry --
+ * the unavailable/normal metadata key sets differ per collector (see the S6 design record),
+ * and asserting an exact set here would be a second breaking change for no consumer benefit.
+ * Throws on the first violation found; never echoes an unexpected key's own name (see
+ * assertExactKeys). Called first thing in writeArtifacts, before any sanitizing or write.
+ */
+export function assertBundleShape(bundle) {
+  assertExactKeys(bundle, REQUIRED_TOP_LEVEL_KEYS, "bundle");
+
+  if (bundle.schemaVersion !== SCHEMA_VERSION) {
+    shapeFailure(
+      "bundle.schemaVersion",
+      `expected ${SCHEMA_VERSION}, got ${JSON.stringify(bundle.schemaVersion)}`,
+    );
+  }
+  assertValidStatus(bundle.status, "bundle.status");
+  assertExactKeys(bundle.collectors, REQUIRED_COLLECTOR_NAMES, "bundle.collectors");
+
+  let expectedWarnings = 0;
+  let expectedObservations = 0;
+
+  for (const name of REQUIRED_COLLECTOR_NAMES) {
+    const collector = bundle.collectors[name];
+    const path = `bundle.collectors.${name}`;
+    assertExactKeys(collector, REQUIRED_ENVELOPE_KEYS, path);
+    assertValidStatus(collector.status, `${path}.status`);
+
+    if (!Array.isArray(collector.records)) shapeFailure(`${path}.records`, "expected an array");
+
+    if (!Array.isArray(collector.warnings)) {
+      shapeFailure(`${path}.warnings`, "expected an array");
+    }
+    collector.warnings.forEach((warning, index) => {
+      if (typeof warning !== "string" || warning.length === 0) {
+        shapeFailure(`${path}.warnings[${index}]`, "expected a non-empty string");
+      }
+    });
+    expectedWarnings += collector.warnings.length;
+
+    if (!Array.isArray(collector.observations)) {
+      shapeFailure(`${path}.observations`, "expected an array");
+    }
+    collector.observations.forEach((observation, index) => {
+      const observationPath = `${path}.observations[${index}]`;
+      if (!isPlainObject(observation)) shapeFailure(observationPath, "expected an object");
+      if (typeof observation.id !== "string" || observation.id.length === 0) {
+        shapeFailure(`${observationPath}.id`, "expected a non-empty string");
+      }
+      if (typeof observation.message !== "string" || observation.message.length === 0) {
+        shapeFailure(`${observationPath}.message`, "expected a non-empty string");
+      }
+    });
+    expectedObservations += collector.observations.length;
+
+    if (!isPlainObject(collector.metadata)) {
+      shapeFailure(`${path}.metadata`, "expected an object");
+    } else if (!("evidenceLabels" in collector.metadata)) {
+      shapeFailure(`${path}.metadata.evidenceLabels`, "expected evidenceLabels to be present");
+    }
+  }
+
+  // Named metadata keys real consumers depend on -- see the function doc comment.
+  const gitDiff = bundle.collectors.git.metadata.diff;
+  if (!isPlainObject(gitDiff) || typeof gitDiff.omitted !== "boolean") {
+    shapeFailure(
+      "bundle.collectors.git.metadata.diff",
+      "expected an object with a boolean omitted field",
+    );
+  }
+  const externalContext = bundle.collectors.planning.metadata.externalContext;
+  if (!isPlainObject(externalContext)) {
+    shapeFailure("bundle.collectors.planning.metadata.externalContext", "expected an object");
+  }
+
+  if (!isPlainObject(bundle.aggregate)) {
+    shapeFailure("bundle.aggregate", "expected an object");
+  } else {
+    if (!Array.isArray(bundle.aggregate.warnings) || bundle.aggregate.warnings.length !== expectedWarnings) {
+      shapeFailure(
+        "bundle.aggregate.warnings",
+        "count does not match the sum of every collector's own warnings",
+      );
+    }
+    if (
+      !Array.isArray(bundle.aggregate.observations) ||
+      bundle.aggregate.observations.length !== expectedObservations
+    ) {
+      shapeFailure(
+        "bundle.aggregate.observations",
+        "count does not match the sum of every collector's own observations",
+      );
+    }
+  }
+
+  if (!isPlainObject(bundle.policy)) {
+    shapeFailure("bundle.policy", "expected an object");
+  } else if (bundle.policy.rawDiffsIncluded !== false) {
+    shapeFailure(
+      "bundle.policy.rawDiffsIncluded",
+      "must always be false -- this tool never includes raw diff/patch content",
+    );
+  }
+}
+
 export function composeEvidence({ root = process.cwd(), includeDiff = false, baseRef } = {}) {
   const repositoryRoot = resolve(root);
   const collectors = {

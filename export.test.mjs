@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { join } from "node:path";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 
 import {
   SCHEMA_VERSION,
+  assertBundleShape,
   buildAggregate,
   bundleStatus,
   composeEvidence,
@@ -404,6 +405,157 @@ describe("bundleStatus", () => {
 
   it("is unavailable only when every collector is unavailable", () => {
     expect(bundleStatus({ a: { status: "unavailable" }, b: { status: "unavailable" } })).toBe("unavailable");
+  });
+});
+
+function gitFixture() {
+  const { root } = fixture();
+  execFileSync("git", ["init", "--initial-branch=main"], { cwd: root });
+  execFileSync("git", ["config", "user.name", "Fixture Export"], { cwd: root });
+  execFileSync(
+    "git",
+    ["config", "user.email", ["fixture", "shape", "@", "example", ".test"].join("")],
+    { cwd: root },
+  );
+  execFileSync("git", ["add", "--all"], { cwd: root });
+  execFileSync("git", ["commit", "-m", "initial"], { cwd: root });
+  return { root };
+}
+
+describe("assertBundleShape (S6 structural guard)", () => {
+  it("accepts a real bundle from a non-Git directory", () => {
+    const { root } = fixture();
+    expect(() => assertBundleShape(composeEvidence({ root }))).not.toThrow();
+  });
+
+  it("accepts a real bundle from a Git repository with includeDiff:false", () => {
+    const { root } = gitFixture();
+    expect(() => assertBundleShape(composeEvidence({ root, includeDiff: false }))).not.toThrow();
+  });
+
+  it("accepts a real bundle from a Git repository with includeDiff:true", () => {
+    const { root } = gitFixture();
+    expect(() => assertBundleShape(composeEvidence({ root, includeDiff: true }))).not.toThrow();
+  });
+
+  describe("rejects a mutated bundle", () => {
+    let validBundle;
+
+    beforeEach(() => {
+      const { root } = gitFixture();
+      validBundle = composeEvidence({ root, includeDiff: true });
+    });
+
+    function mutated(mutate) {
+      const bundle = structuredClone(validBundle);
+      mutate(bundle);
+      return bundle;
+    }
+
+    it("an unknown top-level key", () => {
+      expect(() => assertBundleShape(mutated((b) => { b.extra = true; }))).toThrow(/bundle: contains 1 unexpected key/);
+    });
+
+    it("a missing top-level key", () => {
+      expect(() => assertBundleShape(mutated((b) => { delete b.policy; }))).toThrow(/bundle: missing required key\(s\): policy/);
+    });
+
+    it("the wrong schemaVersion", () => {
+      expect(() => assertBundleShape(mutated((b) => { b.schemaVersion = 2; }))).toThrow(/bundle\.schemaVersion/);
+    });
+
+    it("an invalid bundle status", () => {
+      expect(() => assertBundleShape(mutated((b) => { b.status = "healthy"; }))).toThrow(/bundle\.status/);
+    });
+
+    it("an extra collector", () => {
+      expect(() => assertBundleShape(mutated((b) => { b.collectors.extra = b.collectors.files; }))).toThrow(
+        /bundle\.collectors: contains 1 unexpected key/,
+      );
+    });
+
+    it("a missing collector", () => {
+      expect(() => assertBundleShape(mutated((b) => { delete b.collectors.product; }))).toThrow(
+        /bundle\.collectors: missing required key\(s\): product/,
+      );
+    });
+
+    it("an extra envelope key on a collector", () => {
+      expect(() => assertBundleShape(mutated((b) => { b.collectors.git.extra = true; }))).toThrow(
+        /bundle\.collectors\.git: contains 1 unexpected key/,
+      );
+    });
+
+    it("a missing envelope key on a collector", () => {
+      expect(() => assertBundleShape(mutated((b) => { delete b.collectors.git.warnings; }))).toThrow(
+        /bundle\.collectors\.git: missing required key\(s\): warnings/,
+      );
+    });
+
+    it("a non-string warning", () => {
+      expect(() => assertBundleShape(mutated((b) => { b.collectors.files.warnings.push(404); }))).toThrow(
+        /bundle\.collectors\.files\.warnings\[0\]/,
+      );
+    });
+
+    it("an observation missing its id", () => {
+      expect(() => assertBundleShape(mutated((b) => {
+        b.collectors.configuration.observations.push({ message: "no id here" });
+      }))).toThrow(/observations\[0\]\.id/);
+    });
+
+    it("the diff key deleted", () => {
+      expect(() => assertBundleShape(mutated((b) => { delete b.collectors.git.metadata.diff; }))).toThrow(
+        /bundle\.collectors\.git\.metadata\.diff/,
+      );
+    });
+
+    it("the diff key missing omitted", () => {
+      expect(() => assertBundleShape(mutated((b) => { delete b.collectors.git.metadata.diff.omitted; }))).toThrow(
+        /bundle\.collectors\.git\.metadata\.diff/,
+      );
+    });
+
+    it("planning's externalContext missing", () => {
+      expect(() => assertBundleShape(mutated((b) => { delete b.collectors.planning.metadata.externalContext; }))).toThrow(
+        /bundle\.collectors\.planning\.metadata\.externalContext/,
+      );
+    });
+
+    it("a collector's evidenceLabels missing", () => {
+      expect(() => assertBundleShape(mutated((b) => { delete b.collectors.delivery.metadata.evidenceLabels; }))).toThrow(
+        /bundle\.collectors\.delivery\.metadata\.evidenceLabels/,
+      );
+    });
+
+    it("a mismatched aggregate warnings count", () => {
+      expect(() => assertBundleShape(mutated((b) => { b.aggregate.warnings.push({ collector: "files", message: "phantom" }); }))).toThrow(
+        /bundle\.aggregate\.warnings/,
+      );
+    });
+
+    it("a mismatched aggregate observations count", () => {
+      expect(() => assertBundleShape(mutated((b) => {
+        b.aggregate.observations.push({ collector: "files", id: "phantom", message: "phantom" });
+      }))).toThrow(/bundle\.aggregate\.observations/);
+    });
+
+    it("rawDiffsIncluded set to true", () => {
+      expect(() => assertBundleShape(mutated((b) => { b.policy.rawDiffsIncluded = true; }))).toThrow(
+        /bundle\.policy\.rawDiffsIncluded/,
+      );
+    });
+
+    it("never echoes the name of an unexpected key in the failure message", () => {
+      let message = "";
+      try {
+        assertBundleShape(mutated((b) => { b.byContact = { "someone@example.test": {} }; }));
+      } catch (error) {
+        message = error.message;
+      }
+      expect(message).not.toContain("byContact");
+      expect(message).not.toContain("example.test");
+    });
   });
 });
 
