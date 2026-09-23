@@ -51,21 +51,34 @@ authoritative and the repo is ground truth.**
   later addendum recording the generalization that removed that limitation.
 - Decision record (ADR): [`decisions/2026-08-07-evidence-labels.md`](decisions/2026-08-07-evidence-labels.md)
   - the evidence-labels vocabulary, mapping, and per-collector implementation now shipping in v1.
-- Decision record (ADR, PROPOSED): [`decisions/2026-09-20-warnings-vs-observations.md`](decisions/2026-09-20-warnings-vs-observations.md)
+- Decision record (ADR, IMPLEMENTED): [`decisions/2026-09-20-warnings-vs-observations.md`](decisions/2026-09-20-warnings-vs-observations.md)
   - the S3 design: which collection events are warnings and which are observations, the
-  aggregate status rule, and the settled owner decisions. Not yet implemented.
+  aggregate status rule, and the settled owner decisions. Merged to `main` via PR #6 (`c8351c7`).
+- Decision record (ADR, IMPLEMENTED): [`decisions/2026-09-22-schema-v3-structural-guard.md`](decisions/2026-09-22-schema-v3-structural-guard.md)
+  - the S6 design: bumping `schemaVersion` to 3, always including the git `diff` key with an
+  `omitted` flag, and the fail-closed structural guard (including the evidence-labels record's
+  own deferred five-rule label checker). Committed to `main`.
+- Decision record (ADR, IMPLEMENTED): [`decisions/2026-09-22-test-coverage-hardening.md`](decisions/2026-09-22-test-coverage-hardening.md)
+  - the S7 design: the shared private-file module and its three real collector fixes, fs-access
+  instrumentation for the never-read-`.env` guarantee, sanitizer redaction/detection drift
+  coverage, direct export-layer walker tests, and the end-to-end real-bundle test. On
+  `feat/s7-test-hardening`, not yet merged to `main`.
 - The original build task record stayed behind in `ohnoai/sliceboard` at
-  `docs/tasks/repository-intelligence-exporter.md` and was not moved here; it remains history in
-  that repository. ⚠️ Its front-matter reads `status: complete`, which described a point-in-time
-  working tree, not the true state - see `03-current-state.md` in this directory for the actual
-  verified state.
+  `docs/tasks/archive/2026/repository-intelligence-exporter.md` and was not moved here; it remains
+  history in that repository. ⚠️ Its front-matter reads `status: complete`, which described a
+  point-in-time working tree, not the true state - see `03-current-state.md` in this directory for
+  the actual verified state. Sliceboard's own `docs/tasks/README.md` says this convention is
+  retired and `archive/` is historical-only, so that record is not kept updated - this repository's
+  own ledger is the accurate source going forward.
 
 ## Status at a glance
 
-See [`03-current-state.md`](03-current-state.md) for the verified current state (last updated
-2026-08-05: 105 focused tests, file inventory, and the full defect ledger with per-item commit
-status) and [`04-remediation-plan.md`](04-remediation-plan.md) for what's left (slices S3, S6, S7
-still open). Evidence-labels v1 has shipped (see [`decisions/2026-08-07-evidence-labels.md`](decisions/2026-08-07-evidence-labels.md)).
+See [`03-current-state.md`](03-current-state.md) for the verified current state and the full
+defect ledger with per-item commit status, and [`04-remediation-plan.md`](04-remediation-plan.md)
+for the full picture (**all slices S0-S7 done**; S0-S6 committed to `main`, S7 implemented on
+`feat/s7-test-hardening`, not yet merged). Schema is now v3; evidence-labels v1 has shipped (see
+[`decisions/2026-08-07-evidence-labels.md`](decisions/2026-08-07-evidence-labels.md)). Test suite
+is now 239 tests across 11 files.
 Re-verify commit-status claims against this repository directly - several items in
 the ledger were last confirmed in a sandbox session without git access; see the notes inline in
 `03-current-state.md`.

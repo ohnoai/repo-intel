@@ -600,10 +600,13 @@ gitDescribe("Git inventory", () => {
     expect(result.metadata.diff.changedFiles).toEqual([]);
     // Value-dependent case: a base that resolved to HEAD asserts nothing meaningful about
     // the repository, so the whole `diff` subtree is unresolved rather than only `baseRef`.
+    // `omitted` itself stays labeled `observed_fact` (S6) -- it is a direct read of whether
+    // the collector attempted the diff at all, not a value derived from the base resolution.
     expect(result.metadata.diff.evidenceLabels).toEqual({
       default: "unresolved",
-      fields: {},
+      fields: { omitted: "observed_fact" },
     });
+    expect(result.metadata.diff.omitted).toBe(false);
   });
 
   it("still honors an explicit --base ref over the merge-base default", () => {
@@ -646,11 +649,16 @@ gitDescribe("Git inventory", () => {
 
     expect(invocations.some((args) => args[0] === "merge-base")).toBe(false);
     expect(invocations.some((args) => args.includes("--numstat"))).toBe(false);
+    // S6: the diff key is always present now (RI-07(b)) -- when includeDiff is false the
+    // early return never flips `omitted` off, so it stays true (the collector never
+    // attempted a diff), and the whole subtree stays labeled unresolved except `omitted`
+    // itself.
     expect(result.metadata.diff).toEqual({
       baseRef: null,
       changedFiles: [],
       numstat: [],
-      evidenceLabels: { default: "unresolved", fields: {} },
+      omitted: true,
+      evidenceLabels: { default: "unresolved", fields: { omitted: "observed_fact" } },
     });
     // Non-diff collection is unaffected.
     expect(result.metadata.currentBranch).toBe("feature");
@@ -671,6 +679,10 @@ gitDescribe("Git inventory", () => {
     expect(result.status).toBe("partial");
     expect(result.metadata.diff.baseRef).toBeNull();
     expect(result.warnings).toContain("The configured diff base was rejected.");
+    // S6: rejected is still an attempt (the collector reached and evaluated the ref), not
+    // an omission -- distinct from includeDiff:false or the not-a-repository case, both of
+    // which leave `omitted: true` because the diff was never attempted at all.
+    expect(result.metadata.diff.omitted).toBe(false);
   });
 
   it("uses aliases instead of absolute worktree paths", () => {
@@ -803,6 +815,15 @@ describe("Git collector failure handling", () => {
     // S3 step 7: the unavailable envelope must still carry the (empty) observations
     // array added in step 3, since the step 6 aggregate loops over every collector.
     expect(result.observations).toEqual([]);
+    // S6: the unavailable path returns before attachGitEvidenceLabels ever runs, so `diff`
+    // keeps initialMetadata()'s stub exactly -- omitted:true with no per-field evidenceLabels
+    // wrapper, inheriting the blanket top-level `unresolved` default instead (§3.4 exception).
+    expect(result.metadata.diff).toEqual({
+      baseRef: null,
+      changedFiles: [],
+      numstat: [],
+      omitted: true,
+    });
   });
 
   it("still reports a plain non-zero exit outside any repository as not a repository", () => {

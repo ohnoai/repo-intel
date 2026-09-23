@@ -935,6 +935,12 @@ the per-collector tests in §10.7 instead.
   `export.mjs`'s `validateArtifact`. Take it when S6 lands, or sooner; it does not require
   the rest of S6 (the "reject unknown top-level shape" and always-present-`diff` parts).
 
+  **Settled by S6 (2026-09-22):** taken as part of S6, not sooner — folded into
+  `assertBundleShape` alongside the rest of the guard rather than added standalone to
+  `validateArtifact`. Live-probed against real output from this repository and
+  `sliceboard`: zero violations. See
+  `docs/decisions/2026-09-22-schema-v3-structural-guard.md` §2.5 and owner decision 3.5.
+
 ### 10.5 schemaVersion
 
 **Bump by one, unconditionally**, on whichever path is chosen — v1 as scoped here, or the
@@ -991,6 +997,12 @@ structural, not per-field.
    guard. §6.2 currently chooses the wrong label; that choice is open to reversal and
    should be settled as part of S6's diff handling rather than inherited unexamined from
    this draft.
+
+   **Settled by S6 (2026-09-22):** kept the blanket `unresolved` choice, but `omitted`
+   itself is now labeled `observed_fact` even within that blanket — it is a direct read of
+   the collector's own control flow, not a guess, so the concern above no longer fully
+   applies. See `docs/decisions/2026-09-22-schema-v3-structural-guard.md` §2.3 and owner
+   decision 3.2.
 2. **`observed_fact` on a `false` `isGitRepository` produced by a transient git failure**
    (RI-GIT-ISREPO). The label will faithfully report the collector's wrong answer. Fixing
    the defect is the fix; the label is not a substitute.

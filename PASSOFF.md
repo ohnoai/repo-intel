@@ -1,4 +1,13 @@
-# PASSOFF.md
+# PASSOFF.md (retired 2026-09-22)
+
+**This convention is retired.** The OpenCode/Zen crew (`architect`/`implementer`/`verifier`/`docs`
+roles in `opencode.json`) it documents is no longer how work proceeds on this project — Claude/Opus
+now does the implementation directly, one small reviewed step at a time, the same discipline
+described below minus the role-switching. See the S6/S7 planning record's "Execution model" note
+for the decision. Everything below is historical only, kept for the S3 slice it was actually used
+for; not something to keep updating or to follow for new work.
+
+---
 
 Implementation map for whoever (human or agent) picks up the evidence-labels
 rollout next. Status lives in [PR #1](https://github.com/ohnoai/repo-intel/pull/1)

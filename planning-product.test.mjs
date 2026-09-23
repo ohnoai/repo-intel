@@ -84,6 +84,42 @@ describe("planning collector", () => {
     expect(result.records[0]).not.toHaveProperty("content");
   });
 
+  it("refuses to read a real .env declared as an authority document, with a warning instead of a leak (S7)", () => {
+    const root = fixture();
+    write(root, ".repo-intelligence.json", JSON.stringify({
+      authorityDocuments: { ".env": "environment-secrets" },
+      requiredAuthorityDocuments: [".env"],
+    }));
+    write(root, ".env", "DATABASE_PASSWORD=hunter2\n");
+    const result = collectPlanning({ root });
+
+    expect(result.status).toBe("partial");
+    expect(result.warnings).toEqual([
+      "Repository intelligence config declared a private environment file as an authority document; refusing to read it: .env.",
+    ]);
+    // Refused, not absent -- the tool did not fail to find it, it declined to open it, so
+    // it must not also carry a required-authority-document-absent observation.
+    expect(result.observations).toEqual([]);
+    expect(result.records).toEqual([]);
+    expect(JSON.stringify(result)).not.toContain("hunter2");
+    expect(JSON.stringify(result)).not.toContain("DATABASE_PASSWORD");
+  });
+
+  it("silently skips a private environment file found by the planning-directory scan, not declared by config (S7)", () => {
+    const root = fixture();
+    // The scan only looks at .md/.mdx/.rst/.txt names; ".env.md" is the shape that would
+    // otherwise pass that filter and also match isPrivateEnvironmentFile's broad check.
+    write(root, "docs/decisions/.env.md", "SHOULD_NEVER_BE_READ=hunter2\n");
+    write(root, "docs/decisions/2026-real.md", "# Real decision\n");
+    const result = collectPlanning({ root });
+
+    expect(result.status).toBe("complete");
+    expect(result.warnings).toEqual([]);
+    expect(result.records).toContainEqual(expect.objectContaining({ path: "docs/decisions/2026-real.md" }));
+    expect(result.records.map((record) => record.path)).not.toContain("docs/decisions/.env.md");
+    expect(JSON.stringify(result)).not.toContain("hunter2");
+  });
+
   it("still reports partial for a real collection failure: a malformed .repo-intelligence.json", () => {
     const root = fixture();
     write(root, ".repo-intelligence.json", "{ not valid json");
@@ -248,6 +284,25 @@ describe("product collector", () => {
       default: "documented_intent",
       fields: { detected: "mechanical_inference", evidencePaths: "mechanical_inference" },
     });
+  });
+
+  it("never scans a source-extension file that also looks like a dotenv variant (S7)", () => {
+    const root = fixture();
+    const sentinelValue = ["fixture", "-product-dotenv", "-secret"].join("");
+    writeProductConfig(root, {
+      name: "FixtureBoard",
+      signals: [{ id: "sentinel-signal", pattern: "SHOULD_NEVER_FIRE" }],
+    });
+    // ".env.ts" passes SOURCE_EXTENSIONS' .ts match and, before this fix, would have been
+    // opened and scanned for signals/risk surfaces like any other source file.
+    write(root, "src/.env.ts", `export const SHOULD_NEVER_FIRE = "${sentinelValue}";\n`);
+    write(root, "src/app.ts", "export const app = true;\n");
+
+    const result = collectProduct({ root });
+
+    expect(result.metadata.signals.map((signal) => signal.id)).not.toContain("sentinel-signal");
+    expect(result.metadata.product).toBeNull();
+    expect(JSON.stringify(result)).not.toContain(sentinelValue);
   });
 
   it("reports product: null when configured signals never fire, even with a configured name", () => {

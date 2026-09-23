@@ -1,10 +1,12 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { join } from "node:path";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 
 import {
+  SCHEMA_VERSION,
+  assertBundleShape,
   buildAggregate,
   bundleStatus,
   composeEvidence,
@@ -12,6 +14,8 @@ import {
   renderSummary,
   resolveOutputDirectory,
   run,
+  sanitizeEvidence,
+  validateEvidence,
   writeArtifacts,
 } from "./export.mjs";
 
@@ -68,6 +72,22 @@ describe("repository intelligence export", () => {
       join(output, "summary.md"),
     ]);
     expect(readFileSync(join(output, "evidence-bundle.json"), "utf8")).not.toBe("old");
+  });
+
+  it("rejects a malformed bundle before --overwrite deletes the existing target (S6)", () => {
+    const { root } = fixture();
+    const output = resolveOutputDirectory(root);
+    mkdirSync(output, { recursive: true });
+    writeFileSync(join(output, "evidence-bundle.json"), "old");
+
+    const malformed = { ...composeEvidence({ root }), extraTopLevelKey: true };
+
+    expect(() => writeArtifacts({ root, outputDirectory: output, bundle: malformed, overwrite: true })).toThrow(
+      /Bundle structure validation failed/,
+    );
+    // ensureWritableTarget's rmSync must never run for a bundle assertBundleShape rejects --
+    // --overwrite should not delete real output in exchange for writing nothing back.
+    expect(readFileSync(join(output, "evidence-bundle.json"), "utf8")).toBe("old");
   });
 
   it("rejects direct writer use outside the repository root", () => {
@@ -130,12 +150,20 @@ describe("repository intelligence export", () => {
     })).toThrow(/Sanitization validation failed/);
   });
 
-  it("produces deterministic artifacts and excludes diff by default", () => {
+  it("produces deterministic artifacts and stubs (never deletes) the diff key by default", () => {
     const { root } = fixture();
     const first = composeEvidence({ root });
     const second = composeEvidence({ root });
     expect(first).toEqual(second);
-    expect(first.collectors.git.metadata).not.toHaveProperty("diff");
+    // S6/RI-07(b): withoutDiff() is gone -- the diff key is always present now, never
+    // deleted. This fixture is not a Git repository, so the collector never gets far
+    // enough to attempt a diff either way; the key is the untouched initialMetadata() stub.
+    expect(first.collectors.git.metadata.diff).toEqual({
+      baseRef: null,
+      changedFiles: [],
+      numstat: [],
+      omitted: true,
+    });
     expect(JSON.stringify(first)).not.toContain("patch");
   });
 
@@ -146,9 +174,32 @@ describe("repository intelligence export", () => {
     expect(bundle.policy.rawDiffsIncluded).toBe(false);
   });
 
-  it("sets schemaVersion to 2", () => {
+  it("marks the diff omitted vs. attempted through the full composeEvidence path, both includeDiff values (S6)", () => {
     const { root } = fixture();
-    expect(composeEvidence({ root }).schemaVersion).toBe(2);
+    execFileSync("git", ["init", "--initial-branch=main"], { cwd: root });
+    execFileSync("git", ["config", "user.name", "Fixture Export"], { cwd: root });
+    execFileSync("git", ["config", "user.email", ["fixture", "diff", "@", "example", ".test"].join("")], { cwd: root });
+    execFileSync("git", ["add", "--all"], { cwd: root });
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: root });
+
+    const withoutDiff = composeEvidence({ root, includeDiff: false });
+    expect(withoutDiff.collectors.git.metadata.diff).toEqual({
+      baseRef: null,
+      changedFiles: [],
+      numstat: [],
+      omitted: true,
+      evidenceLabels: { default: "unresolved", fields: { omitted: "observed_fact" } },
+    });
+
+    const withDiff = composeEvidence({ root, includeDiff: true });
+    expect(withDiff.collectors.git.metadata.diff.omitted).toBe(false);
+    expect(withDiff.collectors.git.metadata.diff.baseRef).not.toBeNull();
+  });
+
+  it("sets schemaVersion to the current SCHEMA_VERSION (3)", () => {
+    const { root } = fixture();
+    expect(SCHEMA_VERSION).toBe(3);
+    expect(composeEvidence({ root }).schemaVersion).toBe(SCHEMA_VERSION);
   });
 
   it("threads an explicit --base ref from parseArguments through composeEvidence into the Git collector (S2)", () => {
@@ -173,14 +224,18 @@ describe("repository intelligence export", () => {
 
     // No collector keys an object by collected data today, so this drives the guard
     // through the writer directly: a data-derived key must be redacted on the way out.
-    const written = writeArtifacts({
-      root,
-      outputDirectory: output,
-      bundle: { ...composeEvidence({ root }), byContact: { [email]: { count: 1 } } },
-    });
-    const bundle = JSON.parse(readFileSync(written[0], "utf8"));
+    // S6: the bundle root's key set is now fixed and fail-closed via assertBundleShape,
+    // so the probe lives inside a collector's own metadata instead of the bundle root
+    // (metadata's own key set stays open -- see the S6 design record's owner decision 3.3).
+    const bundle = composeEvidence({ root });
+    bundle.collectors.configuration.metadata.byContact = { [email]: { count: 1 } };
 
-    expect(Object.keys(bundle.byContact)).toEqual(["[REDACTED:email]"]);
+    const written = writeArtifacts({ root, outputDirectory: output, bundle });
+    const writtenBundle = JSON.parse(readFileSync(written[0], "utf8"));
+
+    expect(Object.keys(writtenBundle.collectors.configuration.metadata.byContact)).toEqual([
+      "[REDACTED:email]",
+    ]);
     expect(readFileSync(written[0], "utf8")).not.toContain(email);
   });
 
@@ -375,6 +430,191 @@ describe("bundleStatus", () => {
   });
 });
 
+function gitFixture() {
+  const { root } = fixture();
+  execFileSync("git", ["init", "--initial-branch=main"], { cwd: root });
+  execFileSync("git", ["config", "user.name", "Fixture Export"], { cwd: root });
+  execFileSync(
+    "git",
+    ["config", "user.email", ["fixture", "shape", "@", "example", ".test"].join("")],
+    { cwd: root },
+  );
+  execFileSync("git", ["add", "--all"], { cwd: root });
+  execFileSync("git", ["commit", "-m", "initial"], { cwd: root });
+  return { root };
+}
+
+describe("assertBundleShape (S6 structural guard)", () => {
+  it("accepts a real bundle from a non-Git directory", () => {
+    const { root } = fixture();
+    expect(() => assertBundleShape(composeEvidence({ root }))).not.toThrow();
+  });
+
+  it("accepts a real bundle from a Git repository with includeDiff:false", () => {
+    const { root } = gitFixture();
+    expect(() => assertBundleShape(composeEvidence({ root, includeDiff: false }))).not.toThrow();
+  });
+
+  it("accepts a real bundle from a Git repository with includeDiff:true", () => {
+    const { root } = gitFixture();
+    expect(() => assertBundleShape(composeEvidence({ root, includeDiff: true }))).not.toThrow();
+  });
+
+  describe("rejects a mutated bundle", () => {
+    let validBundle;
+
+    beforeEach(() => {
+      const { root } = gitFixture();
+      validBundle = composeEvidence({ root, includeDiff: true });
+    });
+
+    function mutated(mutate) {
+      const bundle = structuredClone(validBundle);
+      mutate(bundle);
+      return bundle;
+    }
+
+    it("an unknown top-level key", () => {
+      expect(() => assertBundleShape(mutated((b) => { b.extra = true; }))).toThrow(/bundle: contains 1 unexpected key/);
+    });
+
+    it("a missing top-level key", () => {
+      expect(() => assertBundleShape(mutated((b) => { delete b.policy; }))).toThrow(/bundle: missing required key\(s\): policy/);
+    });
+
+    it("the wrong schemaVersion", () => {
+      expect(() => assertBundleShape(mutated((b) => { b.schemaVersion = 2; }))).toThrow(/bundle\.schemaVersion/);
+    });
+
+    it("an invalid bundle status", () => {
+      expect(() => assertBundleShape(mutated((b) => { b.status = "healthy"; }))).toThrow(/bundle\.status/);
+    });
+
+    it("an extra collector", () => {
+      expect(() => assertBundleShape(mutated((b) => { b.collectors.extra = b.collectors.files; }))).toThrow(
+        /bundle\.collectors: contains 1 unexpected key/,
+      );
+    });
+
+    it("a missing collector", () => {
+      expect(() => assertBundleShape(mutated((b) => { delete b.collectors.product; }))).toThrow(
+        /bundle\.collectors: missing required key\(s\): product/,
+      );
+    });
+
+    it("an extra envelope key on a collector", () => {
+      expect(() => assertBundleShape(mutated((b) => { b.collectors.git.extra = true; }))).toThrow(
+        /bundle\.collectors\.git: contains 1 unexpected key/,
+      );
+    });
+
+    it("a missing envelope key on a collector", () => {
+      expect(() => assertBundleShape(mutated((b) => { delete b.collectors.git.warnings; }))).toThrow(
+        /bundle\.collectors\.git: missing required key\(s\): warnings/,
+      );
+    });
+
+    it("a non-string warning", () => {
+      expect(() => assertBundleShape(mutated((b) => { b.collectors.files.warnings.push(404); }))).toThrow(
+        /bundle\.collectors\.files\.warnings\[0\]/,
+      );
+    });
+
+    it("an observation missing its id", () => {
+      expect(() => assertBundleShape(mutated((b) => {
+        b.collectors.configuration.observations.push({ message: "no id here" });
+      }))).toThrow(/observations\[0\]\.id/);
+    });
+
+    it("the diff key deleted", () => {
+      expect(() => assertBundleShape(mutated((b) => { delete b.collectors.git.metadata.diff; }))).toThrow(
+        /bundle\.collectors\.git\.metadata\.diff/,
+      );
+    });
+
+    it("the diff key missing omitted", () => {
+      expect(() => assertBundleShape(mutated((b) => { delete b.collectors.git.metadata.diff.omitted; }))).toThrow(
+        /bundle\.collectors\.git\.metadata\.diff/,
+      );
+    });
+
+    it("planning's externalContext missing", () => {
+      expect(() => assertBundleShape(mutated((b) => { delete b.collectors.planning.metadata.externalContext; }))).toThrow(
+        /bundle\.collectors\.planning\.metadata\.externalContext/,
+      );
+    });
+
+    it("a collector's evidenceLabels missing", () => {
+      expect(() => assertBundleShape(mutated((b) => { delete b.collectors.delivery.metadata.evidenceLabels; }))).toThrow(
+        /bundle\.collectors\.delivery\.metadata\.evidenceLabels/,
+      );
+    });
+
+    it("a mismatched aggregate warnings count", () => {
+      expect(() => assertBundleShape(mutated((b) => { b.aggregate.warnings.push({ collector: "files", message: "phantom" }); }))).toThrow(
+        /bundle\.aggregate\.warnings/,
+      );
+    });
+
+    it("a mismatched aggregate observations count", () => {
+      expect(() => assertBundleShape(mutated((b) => {
+        b.aggregate.observations.push({ collector: "files", id: "phantom", message: "phantom" });
+      }))).toThrow(/bundle\.aggregate\.observations/);
+    });
+
+    it("rawDiffsIncluded set to true", () => {
+      expect(() => assertBundleShape(mutated((b) => { b.policy.rawDiffsIncluded = true; }))).toThrow(
+        /bundle\.policy\.rawDiffsIncluded/,
+      );
+    });
+
+    it("never echoes the name of an unexpected key in the failure message", () => {
+      let message = "";
+      try {
+        assertBundleShape(mutated((b) => { b.byContact = { "someone@example.test": {} }; }));
+      } catch (error) {
+        message = error.message;
+      }
+      expect(message).not.toContain("byContact");
+      expect(message).not.toContain("example.test");
+    });
+
+    // §10.6's five deferred structural assertions (evidence-labels decision record),
+    // taken now that S6 lands per §10.4 V1-3.
+    describe("the five-rule evidence-label guard (§10.6)", () => {
+      it("rejects an evidenceLabels block with an extra key", () => {
+        expect(() => assertBundleShape(mutated((b) => {
+          b.collectors.git.metadata.evidenceLabels.extra = "observed_fact";
+        }))).toThrow(/metadata\.evidenceLabels: contains 1 unexpected key/);
+      });
+
+      it("rejects an invalid default token", () => {
+        expect(() => assertBundleShape(mutated((b) => {
+          b.collectors.git.metadata.evidenceLabels.default = "guess";
+        }))).toThrow(/metadata\.evidenceLabels\.default/);
+      });
+
+      it("rejects an invalid token in fields", () => {
+        expect(() => assertBundleShape(mutated((b) => {
+          b.collectors.git.metadata.evidenceLabels.fields.currentBranch = "not-a-token";
+        }))).toThrow(/metadata\.evidenceLabels\.fields\.currentBranch/);
+      });
+
+      it("rejects a fields key that does not name a key on the same object", () => {
+        expect(() => assertBundleShape(mutated((b) => {
+          b.collectors.git.metadata.evidenceLabels.fields.bogusField = "observed_fact";
+        }))).toThrow(/metadata\.evidenceLabels\.fields.*bogusField/);
+      });
+
+      it("rejects a fields key named evidenceLabels", () => {
+        expect(() => assertBundleShape(mutated((b) => {
+          b.collectors.git.metadata.evidenceLabels.fields.evidenceLabels = "observed_fact";
+        }))).toThrow(/metadata\.evidenceLabels\.fields: must not name evidenceLabels itself/);
+      });
+    });
+  });
+});
+
 describe("bundle-wide status and aggregate wiring in composeEvidence", () => {
   it("sets the top-level status from the real collectors, landing on the mixed partial case", () => {
     const { root } = fixture();
@@ -557,5 +797,58 @@ describe("Observations section in the rendered summary", () => {
     expect(configurationIndex).toBeGreaterThan(-1);
     expect(planningIndex).toBeGreaterThan(-1);
     expect(configurationIndex).toBeLessThan(planningIndex);
+  });
+});
+
+describe("sanitizeEvidence / validateEvidence direct walker tests (S7)", () => {
+  const secretValue = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890";
+  const emailKey = ["owner", "@", "example", ".test"].join("");
+  const localPathValue = String.raw`C:\Users\fixture\private-build`;
+
+  it("sanitizes a secret nested several levels deep, as both a key and a value", () => {
+    const nested = {
+      level1: {
+        [emailKey]: {
+          level3: [secretValue, { deep: localPathValue }],
+        },
+      },
+    };
+
+    const sanitized = sanitizeEvidence(nested);
+    const serialized = JSON.stringify(sanitized);
+
+    expect(serialized).not.toContain(secretValue);
+    expect(serialized).not.toContain(emailKey);
+    expect(serialized).not.toContain("private-build");
+    expect(() => validateEvidence(sanitized)).not.toThrow();
+  });
+
+  it("validateEvidence fatals on an unsanitized value nested inside an array inside an object", () => {
+    const nested = { safe: { alsoSafe: [secretValue] } };
+    expect(() => validateEvidence(nested)).toThrow(/Sanitization validation failed/);
+  });
+
+  it("validateEvidence fatals on an unsanitized nested object key, not just values", () => {
+    const nested = { safe: { [emailKey]: "fine" } };
+    expect(() => validateEvidence(nested)).toThrow(/Sanitization validation failed/);
+  });
+
+  it("round-trips an array of objects without losing sanitization on any element", () => {
+    const records = [
+      { id: "a", note: secretValue },
+      { id: "b", note: "clean" },
+    ];
+    const sanitized = sanitizeEvidence(records);
+
+    expect(JSON.stringify(sanitized)).not.toContain(secretValue);
+    expect(() => validateEvidence(sanitized)).not.toThrow();
+  });
+
+  it("sanitizeEvidence then validateEvidence is idempotent on an already-clean nested structure", () => {
+    const clean = { a: { b: ["clean value", { c: "also clean" }] } };
+    const once = sanitizeEvidence(clean);
+    const twice = sanitizeEvidence(once);
+    expect(twice).toEqual(once);
+    expect(() => validateEvidence(twice)).not.toThrow();
   });
 });
