@@ -5,8 +5,11 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 
 import {
+  buildAggregate,
+  bundleStatus,
   composeEvidence,
   parseArguments,
+  renderSummary,
   resolveOutputDirectory,
   run,
   writeArtifacts,
@@ -292,5 +295,267 @@ describe("git-ignore guard on the output directory", () => {
     const { root } = fixture();
 
     expect(run(["--root", root])).toHaveLength(2);
+  });
+});
+
+// S3 step 6: aggregate, top-level status, and Observations summary rendering.
+// See docs/decisions/2026-09-20-warnings-vs-observations.md section 5 step 6.
+
+describe("buildAggregate", () => {
+  it("walks collectors in name order and preserves each collector's own emission order without re-sorting", () => {
+    const collectors = {
+      zulu: {
+        warnings: ["z-second", "z-first"],
+        observations: [
+          { id: "z-obs-2", message: "b" },
+          { id: "z-obs-1", message: "a" },
+        ],
+      },
+      alpha: {
+        warnings: ["a-only"],
+        observations: [{ id: "a-obs", message: "m" }],
+      },
+    };
+
+    expect(buildAggregate(collectors)).toEqual({
+      warnings: [
+        { collector: "alpha", message: "a-only" },
+        { collector: "zulu", message: "z-second" },
+        { collector: "zulu", message: "z-first" },
+      ],
+      observations: [
+        { collector: "alpha", id: "a-obs", message: "m" },
+        { collector: "zulu", id: "z-obs-2", message: "b" },
+        { collector: "zulu", id: "z-obs-1", message: "a" },
+      ],
+    });
+  });
+
+  it("returns empty lists when no collector has warnings or observations", () => {
+    const collectors = {
+      one: { warnings: [], observations: [] },
+      two: { warnings: [], observations: [] },
+    };
+    expect(buildAggregate(collectors)).toEqual({ warnings: [], observations: [] });
+  });
+
+  it("emits exactly {collector, id, message} for observations, so the real collector name wins over any stray field on the entry", () => {
+    const collectors = {
+      example: {
+        warnings: [],
+        observations: [{ id: "obs-id", message: "obs message", collector: "wrong", extra: true }],
+      },
+    };
+    expect(buildAggregate(collectors)).toEqual({
+      warnings: [],
+      observations: [{ collector: "example", id: "obs-id", message: "obs message" }],
+    });
+  });
+});
+
+describe("bundleStatus", () => {
+  it("is complete when every collector is complete", () => {
+    expect(bundleStatus({ a: { status: "complete" }, b: { status: "complete" } })).toBe("complete");
+  });
+
+  it("is partial when any collector is partial", () => {
+    expect(bundleStatus({ a: { status: "complete" }, b: { status: "partial" } })).toBe("partial");
+  });
+
+  it("is partial, not unavailable, when one collector is unavailable among otherwise-healthy collectors", () => {
+    expect(bundleStatus({
+      a: { status: "complete" },
+      b: { status: "unavailable" },
+      c: { status: "complete" },
+    })).toBe("partial");
+  });
+
+  it("is unavailable only when every collector is unavailable", () => {
+    expect(bundleStatus({ a: { status: "unavailable" }, b: { status: "unavailable" } })).toBe("unavailable");
+  });
+});
+
+describe("bundle-wide status and aggregate wiring in composeEvidence", () => {
+  it("sets the top-level status from the real collectors, landing on the mixed partial case", () => {
+    const { root } = fixture();
+    const bundle = composeEvidence({ root });
+
+    // The fixture is not a Git repository (git collector "unavailable") and file
+    // discovery falls back to the filesystem (a "files" warning, so "partial"). Neither
+    // "every collector unavailable" nor "every collector complete" holds, so this
+    // exercises the mixed branch of the 2.3 rule against real collector output, not
+    // hand-built data.
+    expect(bundle.status).toBe("partial");
+    expect(bundle.status).toBe(bundleStatus(bundle.collectors));
+  });
+
+  it("populates the top-level aggregate from the real collectors' warnings and observations", () => {
+    const { root } = fixture();
+    const bundle = composeEvidence({ root });
+
+    expect(bundle.aggregate.observations).toEqual([]);
+    expect(bundle.aggregate.warnings.map((warning) => warning.collector)).toEqual(["files", "git"]);
+    expect(
+      bundle.aggregate.warnings.every(
+        (warning) => typeof warning.message === "string" && warning.message.length > 0,
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps every collector's observations array in sync with the aggregate rollup (S3 step 7)", () => {
+    const { root } = fixture();
+    // A real, resolvable observation from a real collector: without this, `every` below
+    // would pass vacuously over an empty array and assert nothing
+    // (docs/decisions/2026-09-20-warnings-vs-observations.md section 5 step 7).
+    mkdirSync(join(root, "api"), { recursive: true });
+    writeFileSync(join(root, "api", "dynamic-env.ts"), "const dynamic = process.env[pickName()];\n");
+    // git init the fixture so the git collector is not "unavailable" for this test.
+    execFileSync("git", ["init", "--initial-branch=main"], { cwd: root });
+    execFileSync("git", ["config", "user.name", "Fixture Export"], { cwd: root });
+    execFileSync("git", ["config", "user.email", ["fixture", "export", "@", "example", ".test"].join("")], { cwd: root });
+    execFileSync("git", ["add", "--all"], { cwd: root });
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: root });
+
+    const bundle = composeEvidence({ root });
+    const collectorEntries = Object.entries(bundle.collectors);
+
+    // Backstop for the plan's open risk: a collector that forgets `observations` desyncs
+    // the rollup.
+    expect(collectorEntries.every(([, collector]) => Array.isArray(collector.observations))).toBe(true);
+
+    const allObservations = collectorEntries.flatMap(([, collector]) => collector.observations);
+    expect(allObservations.length).toBeGreaterThan(0);
+    // A collector that forgets an id would emit an entry JSON output drops without
+    // complaint, so this fails loudly instead.
+    expect(
+      allObservations.every(
+        (observation) =>
+          typeof observation.id === "string" &&
+          observation.id.length > 0 &&
+          typeof observation.message === "string" &&
+          observation.message.length > 0,
+      ),
+    ).toBe(true);
+
+    // Checks the wiring in composeEvidence and buildAggregate together: every real
+    // collector's own lists actually reach the aggregate, not just buildAggregate in
+    // isolation against hand-built collectors.
+    const observationsSum = collectorEntries.reduce((sum, [, collector]) => sum + collector.observations.length, 0);
+    const warningsSum = collectorEntries.reduce((sum, [, collector]) => sum + collector.warnings.length, 0);
+    expect(observationsSum).toBe(bundle.aggregate.observations.length);
+    expect(warningsSum).toBe(bundle.aggregate.warnings.length);
+  });
+});
+
+function sectionBetween(text, startHeading, endHeading) {
+  const start = text.indexOf(startHeading);
+  const end = text.indexOf(endHeading, start);
+  return text.slice(start + startHeading.length, end);
+}
+
+function minimalCollector(overrides = {}) {
+  return { status: "complete", records: [], warnings: [], observations: [], ...overrides };
+}
+
+function minimalBundle(collectorOverrides = {}) {
+  const collectors = {
+    files: minimalCollector(),
+    git: minimalCollector(),
+    configuration: minimalCollector(),
+    delivery: minimalCollector(),
+    planning: minimalCollector({
+      metadata: { externalContext: { status: "unavailable", accessed: false } },
+    }),
+    product: minimalCollector(),
+    ...collectorOverrides,
+  };
+  return { collectors, policy: { diffSummaryIncluded: false } };
+}
+
+describe("Observations section in the rendered summary", () => {
+  it("places '## Observations' after '## Warnings' and before '## External context'", () => {
+    const summary = renderSummary(minimalBundle());
+    const warningsIndex = summary.indexOf("## Warnings");
+    const observationsIndex = summary.indexOf("## Observations");
+    const externalContextIndex = summary.indexOf("## External context");
+
+    expect(warningsIndex).toBeGreaterThan(-1);
+    expect(observationsIndex).toBeGreaterThan(warningsIndex);
+    expect(externalContextIndex).toBeGreaterThan(observationsIndex);
+  });
+
+  it("renders 'None.' under Observations when no collector has any", () => {
+    const summary = renderSummary(minimalBundle());
+    const observationsSection = sectionBetween(summary, "## Observations", "## External context");
+    expect(observationsSection.trim()).toBe("None.");
+  });
+
+  it("lists an observation under a '### <collector> (<count>)' heading, as `id`: message", () => {
+    const bundle = minimalBundle({
+      configuration: minimalCollector({
+        observations: [{
+          id: "env-access-not-statically-resolvable",
+          message: "An environment variable access could not be resolved statically: api/foo.ts:12.",
+        }],
+      }),
+    });
+    const summary = renderSummary(bundle);
+    const observationsSection = sectionBetween(summary, "## Observations", "## External context");
+
+    expect(observationsSection).toContain("### configuration (1)");
+    expect(observationsSection).toMatch(
+      /^- `env-access-not-statically-resolvable`: An environment variable access could not be resolved statically: api\/foo\.ts:12\.$/m,
+    );
+    // Only collectors that actually have observations are listed.
+    expect(observationsSection).not.toContain("### files");
+    expect(observationsSection).not.toContain("### git");
+  });
+
+  it("keeps a warning out of the Observations section and an observation out of the Warnings section", () => {
+    const bundle = minimalBundle({
+      git: minimalCollector({ status: "partial", warnings: ["The requested directory is not a Git worktree."] }),
+      configuration: minimalCollector({
+        observations: [{
+          id: "env-access-not-statically-resolvable",
+          message: "An environment variable access could not be resolved statically: api/foo.ts:12.",
+        }],
+      }),
+    });
+    const summary = renderSummary(bundle);
+    const warningsSection = sectionBetween(summary, "## Warnings", "## Observations");
+    const observationsSection = sectionBetween(summary, "## Observations", "## External context");
+
+    expect(warningsSection).toContain("The requested directory is not a Git worktree.");
+    expect(warningsSection).not.toContain("env-access-not-statically-resolvable");
+
+    expect(observationsSection).toContain("env-access-not-statically-resolvable");
+    expect(observationsSection).not.toContain("The requested directory is not a Git worktree.");
+  });
+
+  it("groups observations by collector in name order, one heading per collector", () => {
+    const bundle = minimalBundle({
+      planning: minimalCollector({
+        observations: [{
+          id: "required-authority-document-absent",
+          message: "Expected repository authority document was absent: AGENTS.md.",
+        }],
+        metadata: { externalContext: { status: "unavailable", accessed: false } },
+      }),
+      configuration: minimalCollector({
+        observations: [
+          { id: "client-prefixed-var-in-server-code", message: "message one" },
+          { id: "env-access-not-statically-resolvable", message: "message two" },
+        ],
+      }),
+    });
+    const summary = renderSummary(bundle);
+    const observationsSection = sectionBetween(summary, "## Observations", "## External context");
+
+    const configurationIndex = observationsSection.indexOf("### configuration (2)");
+    const planningIndex = observationsSection.indexOf("### planning (1)");
+
+    expect(configurationIndex).toBeGreaterThan(-1);
+    expect(planningIndex).toBeGreaterThan(-1);
+    expect(configurationIndex).toBeLessThan(planningIndex);
   });
 });

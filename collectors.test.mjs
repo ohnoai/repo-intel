@@ -175,6 +175,9 @@ describe("repository file inventory", () => {
     const paths = result.records.map((record) => record.path);
 
     expect(result.status).toBe("complete");
+    // S3 step 5: files has nothing to move to observations, so every envelope still
+    // carries an empty array. Fails if the key is dropped or reverted.
+    expect(result.observations).toEqual([]);
     expect(paths).toContain("src/kept.ts");
     expect(paths).toContain("src/build/kept.ts");
     expect(paths).toContain("src/dist/kept.ts");
@@ -342,6 +345,8 @@ describe("repository file inventory", () => {
       default: "unresolved",
       fields: {},
     });
+    // S3 step 5: the unavailable envelope also carries an empty observations array.
+    expect(result.observations).toEqual([]);
   });
 });
 
@@ -564,7 +569,7 @@ gitDescribe("Git inventory", () => {
     );
   });
 
-  it("warns, but does not fail, when the diff base resolves to HEAD", () => {
+  it("records an observation, not a warning, when the diff base resolves to HEAD (S3)", () => {
     const { root } = createFixture();
     writeFixtureFile(root, "src/only.ts", "export const only = true;\n");
     // Initialize with a non-"main" default branch so merge-base(HEAD, main) has
@@ -579,10 +584,19 @@ gitDescribe("Git inventory", () => {
     const result = collectGitInventory({ root });
 
     expect(result.metadata.diff.baseRef).toBe("HEAD");
-    expect(result.status).toBe("partial");
-    expect(result.warnings).toContain(
-      "The diff base resolved to HEAD (no local main and no upstream branch); an empty diff summary is expected, not a failure.",
-    );
+    // S3: resolving to HEAD (no local main, no upstream) is a fact about the
+    // repository, not a collection failure -- the message says so itself -- so it must
+    // not demote status. This must fail if the event is put back through warn()
+    // (docs/decisions/2026-09-20-warnings-vs-observations.md 2.4, section 5 step 3).
+    expect(result.status).toBe("complete");
+    expect(result.warnings).toEqual([]);
+    expect(result.observations).toEqual([
+      {
+        id: "diff-base-resolved-to-head",
+        message:
+          "The diff base resolved to HEAD (no local main and no upstream branch); an empty diff summary is expected, not a failure.",
+      },
+    ]);
     expect(result.metadata.diff.changedFiles).toEqual([]);
     // Value-dependent case: a base that resolved to HEAD asserts nothing meaningful about
     // the repository, so the whole `diff` subtree is unresolved rather than only `baseRef`.
@@ -641,6 +655,10 @@ gitDescribe("Git inventory", () => {
     // Non-diff collection is unaffected.
     expect(result.metadata.currentBranch).toBe("feature");
     expect(result.status).toBe("complete");
+    // S3 step 7: the includeDiff:false early return runs before the diff base is
+    // resolved, so it can never carry the diff-base-resolved-to-head observation, but it
+    // must still carry the (empty) observations array added in step 3.
+    expect(result.observations).toEqual([]);
   });
 
   it("rejects option-like base refs before invoking Git", () => {
@@ -782,6 +800,9 @@ describe("Git collector failure handling", () => {
     expect(result.status).toBe("unavailable");
     expect(result.metadata.repository.isGitRepository).toBe(false);
     expect(serialized).not.toContain(normalizeRepositoryPath(root));
+    // S3 step 7: the unavailable envelope must still carry the (empty) observations
+    // array added in step 3, since the step 6 aggregate loops over every collector.
+    expect(result.observations).toEqual([]);
   });
 
   it("still reports a plain non-zero exit outside any repository as not a repository", () => {

@@ -1,8 +1,10 @@
 # Warnings vs. Observations and Aggregate Status (S3)
 
-> **STATUS: PROPOSED, owner decisions settled (2026-09-20). Design only, no code written.**
-> Section 3 records the three owner decisions; each took the recommendation. This stays a
-> proposal until the work ships and the acceptance check in section 6 passes.
+> **STATUS: IMPLEMENTED on `feat/s3-observations` (2026-09-22).** All seven steps in section 5
+> are committed and `npm test` passes (174 tests). The section 6 acceptance check has been
+> confirmed against `sliceboard`. Owner decisions in section 3 are settled, each as the
+> recommended option. Still pending: the OpenCode `verifier-final` review of the whole branch,
+> and the pull request.
 
 ## 1. Context
 
@@ -38,7 +40,11 @@ and the tool lost nothing by it. Observations never change status.
 **2.2 Shape.** Each collector envelope gains `observations: {id, message}[]`, next to `warnings`.
 `id` is a stable kebab-case string assigned in the collector (for example
 `env-access-not-statically-resolvable`). `message` passes through the same sanitizer as warnings.
-Lists are de-duplicated and sorted, as `warnings` are today. The bundle gains
+Lists are de-duplicated on the exact `(id, message)` pair and sorted by `id`, then `message`,
+using code-unit comparison (`compareText`), by `buildObservations` in `lib/observations.mjs`.
+The planning and product collectors already finalize `warnings` the same way
+(`[...new Set(warnings)].sort(compareText)`); the other four do not sort them today. The
+bundle gains
 `aggregate: { warnings: {collector, message}[], observations: {collector, id, message}[] }` and a
 top-level `status`.
 
@@ -108,13 +114,149 @@ One pull request. Steps in order, each small enough to review alone:
 1. Shared helper for building and de-duplicating an observation list, plus its unit tests.
 2. `configuration`: two events moved, with tests that a repository whose only findings are
    observations is `complete`.
-3. `git`: one event moved.
-4. `planning`: one event moved.
-5. `files`, `delivery`, `product`: add the empty `observations` array.
-6. `export.mjs`: `aggregate`, top-level `status`, summary rendering.
+3. `git`: one event moved (`diff-base-resolved-to-head`). This collector does not use the
+   `warnings.length` rule the others use, so the move is not just a matter of taking the
+   message out of `warnings`:
+   - Its status comes from a `partial` flag that its `warn()` helper sets. The observation
+     must not go through `warn()`. Give it its own accumulator, finalize that with
+     `buildObservations`, and leave the `partial` flag alone. The message text stays exactly
+     as it is today.
+   - Status is derived at two return sites (`status: partial ? "partial" : "complete"`): the
+     early return for `includeDiff` false, and the final return. Both carry `observations`.
+     The `unavailable` early return carries `observations: []`.
+   - The event can only happen when `includeDiff` is true, because the `includeDiff` false
+     early return runs before the diff base is resolved. That path always has no observations.
+   - The test needs `includeDiff` true in a repository with no local `main` and no upstream
+     branch. It asserts `status: "complete"`, the one observation with its id, and that the
+     message is not in `warnings`. It must fail if the event is put back through `warn()`.
+4. `planning`: one event moved (`required-authority-document-absent`). This is the simple
+   case: status here is `warnings.length ? "partial" : "complete"`, so taking the message out
+   of `warnings` is what makes the collector `complete`. Notes:
+   - Only the push of "Expected repository authority document was absent: <path>." moves.
+     Its text stays exactly as it is today. Every other planning warning (outside root,
+     symlink, over the read limit, unreadable, config could not be parsed, collection
+     bounded) stays a warning.
+   - Leave the existing `warnings` finalisation (`[...new Set(warnings)].sort(compareText)`)
+     alone. Observations go through `buildObservations`, not through that line.
+   - Two return sites: the `unavailable` early return (the directory does not exist) carries
+     `observations: []`, and the final return carries `buildObservations(observations)`.
+   - The existing test "returns partial evidence for absent or unreadable optional planning
+     input..." in `planning-product.test.mjs` asserts `partial` and that the warning is
+     present. The absent-document event is its only warning, so rewrite it to expect
+     `complete`, empty `warnings`, and the one observation with its id. Keep its assertions
+     that no document body or email leaks into the output.
+   - After that rewrite, no planning test would show that a real warning still gives
+     `partial`. Add one: a malformed `.repo-intelligence.json` gives `partial`, a "could not
+     be parsed" warning, and `observations: []`.
+   - Add the section 6 acceptance case as a test: a required document that is truly missing
+     gives `complete`, empty `warnings`, and exactly one observation. Add a second test that
+     a duplicated entry in `requiredAuthorityDocuments` yields one observation (the old
+     `Set` de-duplicated it; `buildObservations` does now). Add an assertion on the existing
+     unavailable-directory test that `observations` is `[]`.
+   - Known quirk, do not fix in this step: a required document that exists on disk but is
+     not also listed under `authorityDocuments`, or found through a default authority path,
+     a roadmap path, or a planning directory, is reported as absent, because the check
+     compares against the discovered-paths list, not the disk. Reproduced 2026-09-20 with
+     `requiredAuthorityDocuments: ["CUSTOM.md"]` and `CUSTOM.md` present. The fixture for
+     the acceptance test must use a document that is really missing, so the test does not
+     depend on this quirk.
+5. `files`, `delivery`, `product`: add the empty `observations` array. This step is mechanical,
+   so the risk is doing more than it says. Notes:
+   - Each collector has exactly two envelope returns: the `unavailable` early return (the
+     directory does not exist) and the final return. Both get `observations: []`. Other
+     `return {` lines in these files are helpers, not envelopes; leave them alone.
+   - Use a literal `[]`. There is nothing to build or de-duplicate, so do not import
+     `buildObservations`, add an accumulator, or add a helper.
+   - Status stays `warnings.length ? "partial" : "complete"` in all three, and no warning
+     moves. In particular `files` adds "Git file discovery was unavailable; used filesystem
+     discovery instead." with `unshift`. It can read like a plain fact, but tracking is lost
+     (`tracking: "unavailable"`), so it stays a warning under the 2.4 table.
+   - The tests live in three different files: `files` in `collectors.test.mjs`, `delivery` in
+     `configuration.test.mjs`, and `product` in `planning-product.test.mjs`. For each collector,
+     assert `observations` equals `[]` on one ordinary result and on the unavailable-directory
+     result (each file already has a test that calls its collector with a missing directory).
+     An assertion of `[]` fails when the key is absent, so it fails if the change is reverted.
+   - No current test asserts an exact envelope shape, so adding the key should not break one.
+     If one does break, stop and report it instead of loosening the assertion.
+6. `export.mjs`: `aggregate`, top-level `status`, summary rendering. This is the largest step.
+   Section 2 leaves a few choices open; they are settled here so the implementer does not
+   have to invent them:
+   - Where: `composeEvidence` builds the bundle (`schemaVersion`, `collectors`, `policy`), so
+     `aggregate` and `status` are added there. Build them with two small pure functions,
+     exported from `export.mjs`, one for the aggregate and one for the bundle status, each
+     taking the `collectors` object. Tests can then hand-build collectors (for example one
+     `unavailable` and five `complete`) without needing real repositories.
+   - Aggregate order: walk the collectors in `compareText` order of their names (the order the
+     summary already uses), and append each collector's own `warnings` and `observations` in the
+     order that collector emitted them. Do not re-sort. The aggregate is then exactly the
+     per-collector lists concatenated, which is what the step 7 count check compares. Several
+     collectors do not sort their warnings today, so a global re-sort would also change output
+     that nothing asked to change.
+   - Status: exactly the 2.3 rule. The bundle is `unavailable` only if every collector is
+     `unavailable`; otherwise `partial` if any collector is `partial` or `unavailable`;
+     otherwise `complete`. One `unavailable` collector among healthy ones gives `partial`, not
+     `unavailable`. Test all four outcomes, including that mixed case.
+   - Do not change `schemaVersion` (decision 3.1). The existing test that pins it to 2 must still
+     pass. `withoutDiff` spreads the whole collector object, so `observations` already survives
+     when `includeDiff` is false; nothing to change there. Sanitizing and validating the new
+     keys needs no change either, because both walk the whole bundle.
+   - Summary: keep the status table exactly as it is. Add `## Observations` after `## Warnings`
+     and before `## External context`. Group by collector in name order, listing only collectors
+     that have observations. Each group gets a `### <collector> (<count>)` heading and one bullet
+     per observation, written as ``- `<id>`: <message>``. With none, write `None.`. This bullet
+     form differs from the warnings form on purpose, so a test can tell a warning line from an
+     observation line. The Warnings section does not change.
+   - Tests must check placement, not just presence. The existing summary test only checks that a
+     `git` warning line exists somewhere. New tests assert that an observation appears after the
+     `## Observations` heading and not under `## Warnings`, and that a warning does not appear
+     under `## Observations`.
+   - `HELP` in `export.mjs` still says the `--base` HEAD case resolves "with a warning rather than
+     a failure". Since step 3 it is an observation. Change only that phrase. `README.md` repeats
+     it and is left for the docs pass. No test pins either wording.
+   - No collector code changes in this step. If a collector turns out not to emit
+     `observations`, stop and report it; do not patch the collector here.
+   - The section 6 acceptance run against `sliceboard` is done by the reviewer, not the
+     implementer, who has no access outside this repository.
 7. A test asserting every collector emits `observations` as an array and the aggregate counts
    match the per-collector counts. This is the backstop for the plan's open risk: a missed
-   collector desyncs the rollup.
+   collector desyncs the rollup. It also asserts that every observation has a non-empty
+   string `id` and `message`, so a collector that forgets an id fails a test instead of
+   emitting an entry with no id (which JSON output would drop without complaint).
+   The test must not stop at a healthy repository: it also asserts `observations` is an array
+   on the git collector's `unavailable` envelope (a directory that is not a Git worktree) and
+   on its `includeDiff: false` envelope. Step 3 added the key on those return paths and no
+   other test looks at it there, and the step 6 aggregate loops over every collector, so a
+   missing key on either path would crash the export for a non-git directory.
+
+   This step is really two things, in two places, not one new test:
+   - Two one-line additions to existing git unit tests in `collectors.test.mjs`:
+     `"skips diff collection entirely when the caller does not want it"` (the
+     `includeDiff: false` case) and `"returns unavailable output for a directory outside a
+     Git repository"` (the not-a-repo case). Add `expect(result.observations).toEqual([]);`
+     to each. Both already use the right fixture; nothing else about them changes.
+   - One new test in `export.test.mjs`, near the existing "bundle-wide status and aggregate
+     wiring in composeEvidence" describe block, for the rollup itself.
+   The rollup test needs at least one real observation, or `every(...)` over an empty array
+   trivially passes and the non-empty-id/message assertion tests nothing. The default
+   `fixture()` in `export.test.mjs` produces zero observations across all six collectors.
+   Build on it: `git init` the fixture (so `git` is not `unavailable`) and add the
+   dynamic-environment-access file already used in `configuration.test.mjs`
+   (`process.env[pickName()]`) so `configuration` emits a real
+   `env-access-not-statically-resolvable` observation. That is enough; do not also try to
+   force every collector to emit one.
+   Against that fixture's real `composeEvidence` result, assert, generically over
+   `Object.entries(bundle.collectors)`:
+   - `Array.isArray(collector.observations)` holds for all six.
+   - Every observation across all six has a non-empty string `id` and a non-empty string
+     `message`.
+   - The sum of each collector's own `observations.length` equals
+     `bundle.aggregate.observations.length`, and the same for `warnings`. This checks the
+     wiring in `composeEvidence` and `buildAggregate` together, which the step 6 unit tests
+     (hand-built collectors) do not: those only exercise `buildAggregate` in isolation, not
+     that every real collector actually reaches it.
+   Do not touch `collect-*.mjs`. If this test finds a collector missing `observations`, that
+   is a regression in an earlier step to fix there, not something to patch inside
+   `export.test.mjs`.
 
 ## 6. Acceptance check
 
@@ -134,3 +276,11 @@ One pull request. Steps in order, each small enough to review alone:
   consumers, if any, are not known.
 - Reclassification is a judgment call per event. The table in 2.4 is the reviewable record of
   those calls.
+- A known false positive got quieter. The planning collector reports a required document as
+  absent when it exists on disk but is not also declared under `authorityDocuments` or found
+  through a default path, a roadmap path, or a planning directory (reproduced 2026-09-20).
+  Before S3 that demoted the collector to `partial`. After S3 the collector reads `complete`
+  and the false claim appears only under Observations. Step 4 keeps the message and the
+  behavior on purpose, because S3 moves events between channels and does not change what
+  counts as found. Decision 3.2 covered a document that is truly missing, not this case.
+  Tracked as `NEW-PLANNING-REQUIRED-DISCOVERY` in `docs/03-current-state.md`.

@@ -49,8 +49,8 @@ Options:
  --overwrite Explicitly replace existing evidence artifacts
  --include-diff Include sanitized Git diff summary metadata (never raw patches)
  --base <ref> Explicit diff base (default precedence: merge-base(HEAD, main)
- -> the branch's own upstream -> HEAD, with a warning rather than
- a failure when it resolves to HEAD)
+ -> the branch's own upstream -> HEAD, noted as an observation
+ rather than a failure when it resolves to HEAD)
  --help Show this help
 ```
 

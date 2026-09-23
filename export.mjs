@@ -135,6 +135,46 @@ function withoutDiff(inventory) {
   return { ...inventory, metadata };
 }
 
+/**
+ * Flattens every collector's own `warnings` and `observations` into two bundle-wide
+ * lists. Collectors are walked in `compareText` order of their names (the order the
+ * summary already uses); within a collector, entries are appended in the order that
+ * collector emitted them. Nothing is re-sorted, so the aggregate is exactly the
+ * per-collector lists concatenated -- several collectors do not sort their own
+ * `warnings` today, and a global re-sort here would change output that nothing asked
+ * to change. See docs/decisions/2026-09-20-warnings-vs-observations.md section 5 step 6.
+ */
+export function buildAggregate(collectors) {
+  const names = Object.keys(collectors).sort(compareText);
+  const warnings = [];
+  const observations = [];
+
+  for (const name of names) {
+    const collector = collectors[name];
+    for (const message of collector.warnings) {
+      warnings.push({ collector: name, message });
+    }
+    for (const observation of collector.observations) {
+      observations.push({ collector: name, id: observation.id, message: observation.message });
+    }
+  }
+
+  return { warnings, observations };
+}
+
+/**
+ * Bundle-wide status, per section 2.3: `unavailable` only if every collector is
+ * `unavailable`; otherwise `partial` if any collector is `partial` or `unavailable`;
+ * otherwise `complete`. One `unavailable` collector among otherwise-healthy ones is
+ * `partial`, not `unavailable` -- the bundle as a whole still collected something.
+ */
+export function bundleStatus(collectors) {
+  const statuses = Object.values(collectors).map((collector) => collector.status);
+  if (statuses.every((status) => status === "unavailable")) return "unavailable";
+  if (statuses.some((status) => status === "partial" || status === "unavailable")) return "partial";
+  return "complete";
+}
+
 export function composeEvidence({ root = process.cwd(), includeDiff = false, baseRef } = {}) {
   const repositoryRoot = resolve(root);
   const collectors = {
@@ -150,7 +190,9 @@ export function composeEvidence({ root = process.cwd(), includeDiff = false, bas
 
   return {
     schemaVersion: 2,
+    status: bundleStatus(collectors),
     collectors,
+    aggregate: buildAggregate(collectors),
     policy: {
       rawDiffsIncluded: false,
       diffSummaryIncluded: includeDiff,
@@ -187,6 +229,27 @@ export function renderSummary(bundle) {
 
   lines.push("", "## Warnings", "");
   lines.push(...(warnings.length ? warnings : ["None."]));
+
+  // Grouped by collector, unlike the flat Warnings list above: an observation carries
+  // its own id, and grouping under a "### <collector>" heading keeps that id's owner
+  // unambiguous without repeating the collector name on every line. The bullet form
+  // ("- `<id>`: <message>") differs from the warnings form ("- `<collector>`: <message>")
+  // on purpose, so a test can tell a warning line from an observation line by shape alone.
+  const observationGroups = Object.keys(collectors)
+    .sort(compareText)
+    .map((name) => ({ name, observations: collectors[name].observations }))
+    .filter((group) => group.observations.length > 0);
+
+  lines.push("", "## Observations", "");
+  if (observationGroups.length) {
+    observationGroups.forEach((group, index) => {
+      if (index > 0) lines.push("");
+      lines.push(`### ${group.name} (${group.observations.length})`, "");
+      lines.push(...group.observations.map((observation) => `- \`${observation.id}\`: ${observation.message}`));
+    });
+  } else {
+    lines.push("None.");
+  }
 
   const planningContext = collectors.planning.metadata.externalContext;
   lines.push(
@@ -298,8 +361,8 @@ Options:
   --allow-unignored   Write even if the output directory is not git-ignored in the target
                        repository (default: refuse, so the bundle can't be committed by accident)
   --base <ref>        Explicit diff base (default precedence: merge-base(HEAD, main)
-                       -> the branch's own upstream -> HEAD, with a warning rather than
-                       a failure when it resolves to HEAD)
+                       -> the branch's own upstream -> HEAD, noted as an observation
+                       rather than a failure when it resolves to HEAD)
   --help              Show this help
 `;
 
