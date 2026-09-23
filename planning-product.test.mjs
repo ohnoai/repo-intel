@@ -286,6 +286,25 @@ describe("product collector", () => {
     });
   });
 
+  it("never scans a source-extension file that also looks like a dotenv variant (S7)", () => {
+    const root = fixture();
+    const sentinelValue = ["fixture", "-product-dotenv", "-secret"].join("");
+    writeProductConfig(root, {
+      name: "FixtureBoard",
+      signals: [{ id: "sentinel-signal", pattern: "SHOULD_NEVER_FIRE" }],
+    });
+    // ".env.ts" passes SOURCE_EXTENSIONS' .ts match and, before this fix, would have been
+    // opened and scanned for signals/risk surfaces like any other source file.
+    write(root, "src/.env.ts", `export const SHOULD_NEVER_FIRE = "${sentinelValue}";\n`);
+    write(root, "src/app.ts", "export const app = true;\n");
+
+    const result = collectProduct({ root });
+
+    expect(result.metadata.signals.map((signal) => signal.id)).not.toContain("sentinel-signal");
+    expect(result.metadata.product).toBeNull();
+    expect(JSON.stringify(result)).not.toContain(sentinelValue);
+  });
+
   it("reports product: null when configured signals never fire, even with a configured name", () => {
     const root = fixture();
     writeProductConfig(root, {
