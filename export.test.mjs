@@ -576,6 +576,40 @@ describe("assertBundleShape (S6 structural guard)", () => {
       expect(message).not.toContain("byContact");
       expect(message).not.toContain("example.test");
     });
+
+    // §10.6's five deferred structural assertions (evidence-labels decision record),
+    // taken now that S6 lands per §10.4 V1-3.
+    describe("the five-rule evidence-label guard (§10.6)", () => {
+      it("rejects an evidenceLabels block with an extra key", () => {
+        expect(() => assertBundleShape(mutated((b) => {
+          b.collectors.git.metadata.evidenceLabels.extra = "observed_fact";
+        }))).toThrow(/metadata\.evidenceLabels: contains 1 unexpected key/);
+      });
+
+      it("rejects an invalid default token", () => {
+        expect(() => assertBundleShape(mutated((b) => {
+          b.collectors.git.metadata.evidenceLabels.default = "guess";
+        }))).toThrow(/metadata\.evidenceLabels\.default/);
+      });
+
+      it("rejects an invalid token in fields", () => {
+        expect(() => assertBundleShape(mutated((b) => {
+          b.collectors.git.metadata.evidenceLabels.fields.currentBranch = "not-a-token";
+        }))).toThrow(/metadata\.evidenceLabels\.fields\.currentBranch/);
+      });
+
+      it("rejects a fields key that does not name a key on the same object", () => {
+        expect(() => assertBundleShape(mutated((b) => {
+          b.collectors.git.metadata.evidenceLabels.fields.bogusField = "observed_fact";
+        }))).toThrow(/metadata\.evidenceLabels\.fields.*bogusField/);
+      });
+
+      it("rejects a fields key named evidenceLabels", () => {
+        expect(() => assertBundleShape(mutated((b) => {
+          b.collectors.git.metadata.evidenceLabels.fields.evidenceLabels = "observed_fact";
+        }))).toThrow(/metadata\.evidenceLabels\.fields: must not name evidenceLabels itself/);
+      });
+    });
   });
 });
 

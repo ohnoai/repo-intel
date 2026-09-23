@@ -313,6 +313,69 @@ export function assertBundleShape(bundle) {
       "must always be false -- this tool never includes raw diff/patch content",
     );
   }
+
+  assertEvidenceLabelStructure(bundle, "bundle");
+}
+
+const EVIDENCE_LABEL_TOKENS = [
+  "observed_fact",
+  "documented_intent",
+  "mechanical_inference",
+  "unresolved",
+];
+
+/**
+ * §10.6's five deferred structural assertions, taken now that S6 lands (per §10.4 V1-3).
+ * Field names in `fields` are static strings written in collector source, never data read
+ * off disk (§5), so -- unlike an unexpected bundle-root key -- they are safe to name in a
+ * failure message.
+ */
+function assertEvidenceLabelStructure(value, path) {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertEvidenceLabelStructure(item, `${path}[${index}]`));
+    return;
+  }
+  if (!isPlainObject(value)) return;
+
+  if ("evidenceLabels" in value) {
+    const labelsPath = `${path}.evidenceLabels`;
+    const labels = value.evidenceLabels;
+    assertExactKeys(labels, ["default", "fields"], labelsPath);
+
+    if (!EVIDENCE_LABEL_TOKENS.includes(labels.default)) {
+      shapeFailure(
+        `${labelsPath}.default`,
+        `expected one of ${EVIDENCE_LABEL_TOKENS.join("/")}, got ${JSON.stringify(labels.default)}`,
+      );
+    }
+
+    if (!isPlainObject(labels.fields)) {
+      shapeFailure(`${labelsPath}.fields`, "expected an object");
+    } else {
+      for (const [fieldKey, fieldValue] of Object.entries(labels.fields)) {
+        if (fieldKey === "evidenceLabels") {
+          shapeFailure(`${labelsPath}.fields`, "must not name evidenceLabels itself");
+        }
+        if (!(fieldKey in value)) {
+          shapeFailure(
+            `${labelsPath}.fields`,
+            `names "${fieldKey}", which is not a key on the same object`,
+          );
+        }
+        if (!EVIDENCE_LABEL_TOKENS.includes(fieldValue)) {
+          shapeFailure(
+            `${labelsPath}.fields.${fieldKey}`,
+            `expected one of ${EVIDENCE_LABEL_TOKENS.join("/")}, got ${JSON.stringify(fieldValue)}`,
+          );
+        }
+      }
+    }
+  }
+
+  for (const [key, nested] of Object.entries(value)) {
+    if (key === "evidenceLabels") continue;
+    assertEvidenceLabelStructure(nested, `${path}.${key}`);
+  }
 }
 
 export function composeEvidence({ root = process.cwd(), includeDiff = false, baseRef } = {}) {
