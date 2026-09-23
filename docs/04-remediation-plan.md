@@ -132,16 +132,20 @@ Baseline is **S0's commit** (`60d7e9c`); **each subsequent slice is its own comm
  counts, and the evidence-labels record's deferred five-rule label guard) runs fail-closed in
  `writeArtifacts` before any write. See `docs/decisions/2026-09-22-schema-v3-structural-guard.md`.
  *Depended on S2, S3, S5.*
-- **S7 · Wire focused tests + regression-guard contracts.** fs-access instrumentation for the `.env`
- boundary (closes NEW-PRIVACY-TESTGAP), the redaction↔detection drift test, an explicit
- `schemaVersion === 3` assertion (recheck only - S6 step 1 already pins the literal 3), npm scripts,
- end-to-end real-bundle validation, and correcting the task record's `status`. *Depends on all,
- including S6. Next up.*
+- **S7 · Wire focused tests + regression-guard contracts. ✅ IMPLEMENTED (2026-09-22).**
+ fs-access instrumentation for the `.env` boundary (closes NEW-PRIVACY-TESTGAP, and fixed a
+ real gap found while scoping it - the planning collector could be configured to read a real
+ `.env`, plus smaller versions of the same bug in the product and delivery collectors), the
+ sanitizer redaction↔detection drift guard, export-layer walker tests, npm scripts for every
+ test file, and an end-to-end real-bundle test. The task record's status was closed as moot
+ rather than edited (sliceboard's own convention retires that file). See
+ `docs/decisions/2026-09-22-test-coverage-hardening.md`. *Depended on S6.*
 
-**Recommended path:** S0 → S4 → S1 → S2 → S5 → S3 → S6 (all done, all committed to `main`) →
-**S7 (next)**.
+**Recommended path:** S0 → S4 → S1 → S2 → S5 → S3 → S6 → S7. **All slices done.**
 
-**Next up:** S7, now unblocked.
+**Next up:** the three follow-on tasks created alongside this plan (`INTEL-8` planning
+required-document discovery, `INTEL-9` CI, `INTEL-10` the `tmp/` gitignore advice text) -
+each already scoped to build on what S6/S7 shipped.
 
 ## 6. Explicit non-goals (V1)
 
