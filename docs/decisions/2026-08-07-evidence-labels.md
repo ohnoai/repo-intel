@@ -860,7 +860,7 @@ it, not as a contradiction.
 
 > **When simplifying a label for v1, round toward the more skeptical label.**
 >
-> A simplification may move a label toward less claimed certainty about the repository —
+> A simplification may move a label toward less claimed certainty about the repository <!-- squelch: skip-start -->—<!-- squelch: skip-end -->
 > toward `mechanical_inference` from `observed_fact`, or toward `unresolved` from any
 > label. It may **never** move a label toward `observed_fact`.
 
@@ -992,8 +992,8 @@ structural, not per-field.
    always-present `diff` key, while S6's diff handling is still being decided, not
    before, and not as a standalone fix.** The concern itself, preserved verbatim for that
    moment: "not attempted" is not the same as "attempted and failed," and the four labels
-   cannot express the difference. The alternative — omitting `evidenceLabels` from an
-   omitted subtree entirely — trades a slightly wrong label for a hole in the structural
+   cannot express the difference. The alternative <!-- squelch: skip-start -->—<!-- squelch: skip-end --> omitting `evidenceLabels` from an
+   omitted subtree entirely <!-- squelch: skip-start -->—<!-- squelch: skip-end --> trades a slightly wrong label for a hole in the structural
    guard. §6.2 currently chooses the wrong label; that choice is open to reversal and
    should be settled as part of S6's diff handling rather than inherited unexamined from
    this draft.

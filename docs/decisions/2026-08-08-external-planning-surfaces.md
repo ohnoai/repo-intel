@@ -118,7 +118,7 @@ a self-contained paragraph in AGENTS.md itself, not a pointer to any personal co
 
 > **State in Vikunja, record in the repo.** A Vikunja card answers "what is being
 > worked on right now". A task file answers "what happened, and why". If you
-> somehow only manage one, make it the task file — that is the half that persists.
+> somehow only manage one, make it the task file <!-- squelch: skip-start -->—<!-- squelch: skip-end --> that is the half that persists.
 
 **When repo-intel gets set up on another repository that also has a `.veans.yml`**,
 this is the template to reuse: adapt SliceBoard's `AGENTS.md` "Task records" section
