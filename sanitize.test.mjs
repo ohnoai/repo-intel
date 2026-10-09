@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  HIGH_CONFIDENCE_PATTERN_IDS,
   assertSanitizedMetadata,
   assertSanitizedText,
   findUnsanitizedLocalPaths,
@@ -292,6 +293,65 @@ describe("repository intelligence sanitization", () => {
       // the validator does not trust its input, only its own detectors.
       const unvalidatedLeak = "reference build output at /data/build/output/app.js";
       expect(() => assertSanitizedMetadata(unvalidatedLeak)).toThrow();
+    });
+  });
+
+  describe("HIGH_CONFIDENCE_PATTERN_IDS coverage and drift (S7)", () => {
+    // One fixture per pattern id, chosen so it actually triggers that id (not just some
+    // other, higher-priority pattern that happens to also redact the string). Derived from
+    // HIGH_CONFIDENCE_PATTERN_IDS below, not hand-copied, so a future pattern added to
+    // lib/sanitize.mjs without a matching fixture here fails the coverage test immediately
+    // instead of silently shipping untested.
+    const fixturesById = {
+      private_key:
+        "-----BEGIN RSA PRIVATE KEY-----\nsuper-secret-key-material\n-----END RSA PRIVATE KEY-----",
+      authorization_bearer: "Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456",
+      anthropic_api_key: "sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890",
+      // Deliberately not "sk-ant-..." -- that would only prove anthropic_api_key fires.
+      openai_api_key: "sk-proj-ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890",
+      stripe_secret_key: "sk_live_ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890",
+      stripe_webhook_secret: "whsec_ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890",
+      github_token: "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890",
+      slack_token: "xoxb-123456789012-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+      jwt: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signaturevalue",
+      credential_url: "https://fixtureuser:fixturepass@example.com/path",
+    };
+
+    it("has a dedicated fixture for every current HIGH_CONFIDENCE_PATTERN_IDS entry", () => {
+      expect(Object.keys(fixturesById).sort()).toEqual([...HIGH_CONFIDENCE_PATTERN_IDS].sort());
+    });
+
+    it.each(HIGH_CONFIDENCE_PATTERN_IDS.map((id) => [id, fixturesById[id]]))(
+      "%s: its own fixture is flagged under its own id and is redacted",
+      (id, fixture) => {
+        const validation = validateSanitizedText(fixture);
+        expect(validation.findings.map((finding) => finding.id)).toContain(id);
+
+        const sanitized = sanitizeText(fixture).text;
+        expect(sanitized).not.toBe(fixture);
+        expect(() => assertSanitizedText(sanitized)).not.toThrow();
+      },
+    );
+
+    it("every fixture pair sanitizes cleanly across several separators (pairwise round-trip)", () => {
+      const values = Object.values(fixturesById);
+      const separators = [" ", "\n", ", ", " and "];
+
+      for (let i = 0; i < values.length; i += 1) {
+        for (let j = i + 1; j < values.length; j += 1) {
+          for (const separator of separators) {
+            const sanitized = sanitizeText(`${values[i]}${separator}${values[j]}`).text;
+            expect(() => assertSanitizedText(sanitized)).not.toThrow();
+          }
+        }
+      }
+    });
+
+    it("sanitizing the full fixture corpus is idempotent", () => {
+      const combined = Object.values(fixturesById).join("\n");
+      const once = sanitizeText(combined).text;
+      const twice = sanitizeText(once).text;
+      expect(twice).toBe(once);
     });
   });
 });

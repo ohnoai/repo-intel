@@ -48,6 +48,8 @@ Options:
  directory explicit on the command line, not to relocate output.
  --overwrite Explicitly replace existing evidence artifacts
  --include-diff Include sanitized Git diff summary metadata (never raw patches)
+ --allow-unignored Write even if the output directory is not git-ignored in the target
+ repository (default: refuse, so the bundle can't be committed by accident)
  --base <ref> Explicit diff base (default precedence: merge-base(HEAD, main)
  -> the branch's own upstream -> HEAD, noted as an observation
  rather than a failure when it resolves to HEAD)
@@ -136,10 +138,13 @@ content, so a redaction gap fails the write rather than silently shipping. Full 
 
 ## Status
 
-Not a finished v1. **126 focused tests pass** as of 2026-08-09 (sanitize 33, collectors 28,
-configuration 28, export 20, planning-product 17), verified with `npm test` in this repository.
-Slices S3 (warnings/observations split), S6 (schema v3 - evidence-labels claimed v2 first), and S7
-(test-coverage hardening) are still open - see [`docs/04-remediation-plan.md`](docs/04-remediation-plan.md).
+Not a finished v1, but **all planned slices (S0-S7) are now implemented.** **239 tests pass
+across 11 files** as of 2026-09-22, verified with `npm test` in this repository. S0-S6 are
+committed to `main` (schema now v3 - evidence-labels claimed v2 first; see
+[`docs/decisions/2026-09-22-schema-v3-structural-guard.md`](docs/decisions/2026-09-22-schema-v3-structural-guard.md)).
+**S7 (test-coverage hardening)** is implemented on `feat/s7-test-hardening`, not yet merged - see
+[`docs/decisions/2026-09-22-test-coverage-hardening.md`](docs/decisions/2026-09-22-test-coverage-hardening.md)
+and [`docs/04-remediation-plan.md`](docs/04-remediation-plan.md).
 
 ## Development
 

@@ -17,7 +17,7 @@ The proposer recommended a default for each; ⭐ marks the real judgment calls.
 | D2 | Git base policy | Add `--base`; default precedence explicit → merge-base(HEAD, main) → `@{upstream}` → HEAD; **warn** (not fail) when it resolves to HEAD. |
 | D3 | Status vs observations | Add `observations[]`; only true degradation → `partial`. Healthy repo → `complete`. |
 | D4 | Validator scope | Cover the metadata tier - as a **constrained superset**, not exact parity (see C3). |
-| D5 | Schema version | Bump `schemaVersion` 1 → 2. |
+| D5 | Schema version | Bump `schemaVersion`. Originally scoped 1 → 2, but evidence-labels claimed 2 first (`docs/decisions/2026-08-07-evidence-labels.md` §10.5); **S6 actually bumped 2 → 3** (`docs/decisions/2026-09-22-schema-v3-structural-guard.md`). |
 | D6 | Workflow provenance | Type each name; drop/segregate `$VAR` + GitHub builtins. |
 | D7 | Validation boundary | One fatal pass on sanitized strings **plus** metadata redaction at the final pass (defense-in-depth). |
 | D9 | Field registry | Light structural guard now; full per-field registry is a non-goal. |
@@ -28,12 +28,14 @@ V1 stays a deterministic, offline, read-only 6-collector CLI. No new collectors,
 The work hardens the shared contracts; the load-bearing one (C3) is re-architected per the adversary
 panel and verifier.
 
-**C1 · result-schema (v2).** Every collector returns `{ status, records[], warnings[],
-observations[], metadata }`. Bundle adds `aggregate: { warnings[], observations[] }` and a top-level
-`status`. **Observations shape pinned end-to-end:** collectors emit `observations: {id, message}[]`
-(id assigned at the collector, e.g. `client-prefixed-var-in-server-code`); the aggregate wraps each as
-`{collector, id, message}`. The git `diff` key is **always present** - when diff is off, emit
-`{baseRef:null, changedFiles:[], numstat:[], omitted:true}` rather than deleting it.
+**C1 · result-schema (v3). ✅ IMPLEMENTED (S6, 2026-09-22).** Every collector returns `{ status,
+records[], warnings[], observations[], metadata }`. Bundle adds `aggregate: { warnings[],
+observations[] }` and a top-level `status`. **Observations shape pinned end-to-end:** collectors
+emit `observations: {id, message}[]` (id assigned at the collector, e.g.
+`client-prefixed-var-in-server-code`); the aggregate wraps each as `{collector, id, message}`. The
+git `diff` key is **always present** - when diff is off, emits
+`{baseRef:null, changedFiles:[], numstat:[], omitted:true}` rather than deleting it. See
+`docs/decisions/2026-09-22-schema-v3-structural-guard.md`.
 
 **C2 · status-semantics.** `status` reflects **collector degradation only**. `unavailable` = early
 guard, couldn't run. `partial` = ran but degraded (missing tool, unreadable/oversized file, malformed
@@ -80,8 +82,9 @@ metadata-tier redaction (`recursivelySanitize → sanitizeMetadataText`), not ju
 idempotency objection is unfounded (`[REDACTED:local-path]` is not re-matchable). This restores a
 second line of defense so a single validator gap is not a direct leak.
 
-**C7 · field-registry.** Light fail-closed structural guard: assert `schemaVersion` and the exact set
-of required collector/metadata keys before write; reject unknown top-level shape. Not a full per-field
+**C7 · field-registry. ✅ IMPLEMENTED (S6, 2026-09-22).** Light fail-closed structural guard: assert
+`schemaVersion` and the exact set of required collector/metadata keys before write; reject unknown
+top-level shape. Not a full per-field
 registry (non-goal).
 
 ## 5. Implementation slices (ordered, individually revertable)
@@ -91,10 +94,10 @@ Baseline is **S0's commit** (`60d7e9c`); **each subsequent slice is its own comm
 
 - **S0 · Commit the working tree as the baseline. ✅ DONE** (`60d7e9c`). The only honest rollback
  point; every "revertable" claim depends on it.
-- **S4 · Resolve `tmp/` hazard + `--output`. ✅ IMPLEMENTED, UNCOMMITTED (2026-07-26).** Gitignored
+- **S4 · Resolve `tmp/` hazard + `--output`. ✅ IMPLEMENTED, COMMITTED (2026-07-26).** Gitignored
  `tmp/repository-intelligence/` (not blanket `tmp/`); documented (not removed) the constrained
  `--output` flag in `--help`. *Depended on S0.*
-- **S1 · Privacy boundary (re-architected). ✅ IMPLEMENTED, UNCOMMITTED (2026-07-26).**
+- **S1 · Privacy boundary (re-architected). ✅ IMPLEMENTED, COMMITTED (2026-07-26).**
  Constrained-superset validator (C3) + redactor⊇validator by shared detector functions (not a
  separately-maintained parity test - `findUnsanitizedLocalPaths` backs both the redaction and the
  fatal check) + sentinel exclusion (verified: `[REDACTED:*]` output never re-triggers) + PowerShell
@@ -108,34 +111,41 @@ Baseline is **S0's commit** (`60d7e9c`); **each subsequent slice is its own comm
  focused suite 77→96, full app suite still 100% green, lint clean, typecheck clean (one pre-existing,
  unrelated `SliceBoardApp.tsx` error/warning untouched). *Depended on S0.*
  - **Implementation note:** built and verified in a sandbox with no git access to this worktree (its
- `.git` pointer resolves to a Windows path outside the sandbox) - so this is uncommitted,
- working-tree-only progress from a single session, not yet independently re-verified the way S0's
- baseline was. See `03-current-state.md`'s 2026-07-26 update.
-- **S2 · Git-base policy. ✅ IMPLEMENTED, UNCOMMITTED (2026-07-26, second session).**
+ `.git` pointer resolves to a Windows path outside the sandbox), so this landed as working-tree-only
+ progress from a single session before being committed separately. See `03-current-state.md`'s
+ 2026-07-26 update for that original context; confirmed present and committed on `main` as of the
+ 2026-09-22 docs pass.
+- **S2 · Git-base policy. ✅ IMPLEMENTED, COMMITTED (2026-07-26, second session).**
  `--base` + merge-base(HEAD, main) → `@{upstream}` → `HEAD` precedence + HEAD-resolution warning
  (C4), threaded through `composeEvidence`/`run()`. Regression-tested against the exact original
  symptom (see `03-current-state.md`). *Depended on S0.*
-- **S3 · Warnings vs observations + aggregate status.** (C1/C2). *Depends on S1. Still open - *
- note the S2 HEAD-resolution warning (above) currently flips `status` to `partial` on an otherwise
- healthy repo, precisely the RI-STATUS problem this slice exists to fix; S3 should reclassify it as
- an `observations[]` entry, not remove it.
-- **S5 · Workflow provenance typing. ✅ IMPLEMENTED, UNCOMMITTED (2026-07-26, second session).**
+- **S3 · Warnings vs observations + aggregate status. ✅ IMPLEMENTED (2026-09-22).** (C1/C2). Merged
+ to `main` via PR #6 (`c8351c7`); reclassified the S2 HEAD-resolution warning as an
+ `observations[]` entry (`diff-base-resolved-to-head`), fixing RI-STATUS. *Depended on S1.*
+- **S5 · Workflow provenance typing. ✅ IMPLEMENTED, COMMITTED (2026-07-26, second session).**
  Typed `{name, provenance}` records (C5), shell-reference CI-builtin exclusion, and a shared
  merge helper so multi-source names keep every provenance. Breaking shape change; the tests it broke
  were fixed in the same slice (see `03-current-state.md`). *Depended on S0.*
-- **S6 · Schema v2 + structural guard.** (C1/C7); update the tests the shape change breaks in the same
- slice. *Depends on S2, S3, S5. S2 and S5 are done; still blocked on S3.*
-- **S7 · Wire focused tests + regression-guard contracts.** fs-access instrumentation for the `.env`
- boundary (closes NEW-PRIVACY-TESTGAP), the redaction↔detection drift test, an explicit
- `schemaVersion === 2` assertion, npm scripts, end-to-end real-bundle validation, and correcting the
- task record's `status`. *Depends on all. Still open.*
+- **S6 · Schema v3 + structural guard. ✅ IMPLEMENTED (2026-09-22).** (C1/C7). `schemaVersion`
+ bumped 2 → 3 (evidence-labels claimed 2 first, per D5 above); the git diff key is always present
+ with an `omitted` flag; `assertBundleShape` (envelope shapes, named metadata keys, aggregate
+ counts, and the evidence-labels record's deferred five-rule label guard) runs fail-closed in
+ `writeArtifacts` before any write. See `docs/decisions/2026-09-22-schema-v3-structural-guard.md`.
+ *Depended on S2, S3, S5.*
+- **S7 · Wire focused tests + regression-guard contracts. ✅ IMPLEMENTED (2026-09-22).**
+ fs-access instrumentation for the `.env` boundary (closes NEW-PRIVACY-TESTGAP, and fixed a
+ real gap found while scoping it - the planning collector could be configured to read a real
+ `.env`, plus smaller versions of the same bug in the product and delivery collectors), the
+ sanitizer redaction↔detection drift guard, export-layer walker tests, npm scripts for every
+ test file, and an end-to-end real-bundle test. The task record's status was closed as moot
+ rather than edited (sliceboard's own convention retires that file). See
+ `docs/decisions/2026-09-22-test-coverage-hardening.md`. *Depended on S6.*
 
-**Recommended path:** S0 (done) → S4 (done) → S1 (done) → **S2 and S5 (done, this session)** →
-S3 (next) → S6 → S7.
+**Recommended path:** S0 → S4 → S1 → S2 → S5 → S3 → S6 → S7. **All slices done.**
 
-**Next up:** review and commit S2 and S5 as two separate commits (per the "each slice is its own
-commit" discipline above; S4 and S1 are already committed). Then S3 - the remaining precondition for
-S6 - followed by S6 and S7 in order.
+**Next up:** the three follow-on tasks created alongside this plan (`INTEL-8` planning
+required-document discovery, `INTEL-9` CI, `INTEL-10` the `tmp/` gitignore advice text) -
+each already scoped to build on what S6/S7 shipped.
 
 ## 6. Explicit non-goals (V1)
 
@@ -158,7 +168,9 @@ S6 - followed by S6 and S7 in order.
  on collector free-text and the negative corpus.
 - The `merge-base` default assumes a local `main` ref exists; clones without it fall back to
  upstream/HEAD, which may surprise users expecting branch-vs-main.
-- Schema v2 + always-present diff key **intentionally** breaks existing export tests - they must be
- updated in the same slice to avoid a red baseline.
+- ~~Schema v2 + always-present diff key **intentionally** breaks existing export tests - they must
+ be updated in the same slice to avoid a red baseline.~~ **Resolved (S6, 2026-09-22):** the two
+ tests this broke were updated in the same commits that broke them (`export.test.mjs`); `npm test`
+ stayed green throughout.
 - Adding `observations[]` touches all six collector envelopes; a missed collector desyncs the rollup - 
  the S6 structural guard is the backstop.

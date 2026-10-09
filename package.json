@@ -15,7 +15,14 @@
     "test:collectors": "vitest run collectors.test.mjs",
     "test:configuration": "vitest run configuration.test.mjs",
     "test:export": "vitest run export.test.mjs",
-    "test:planning-product": "vitest run planning-product.test.mjs"
+    "test:planning-product": "vitest run planning-product.test.mjs",
+    "test:git-worktree-probe": "vitest run git-worktree-probe.test.mjs",
+    "test:observations": "vitest run observations.test.mjs",
+    "test:private-files": "vitest run private-files.test.mjs",
+    "test:privacy-boundary": "vitest run privacy-boundary.test.mjs",
+    "test:end-to-end": "vitest run end-to-end.test.mjs",
+    "test:package-scripts": "vitest run package-scripts.test.mjs",
+    "verify": "vitest run && node export.mjs --root . --overwrite"
   },
   "devDependencies": {
     "vitest": "^4.1.10"

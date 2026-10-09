@@ -19,6 +19,11 @@ const DEFAULT_OUTPUT = "tmp/repository-intelligence";
 const BUNDLE_FILENAME = "evidence-bundle.json";
 const SUMMARY_FILENAME = "summary.md";
 
+// v2 was claimed by the evidence-labels rollout (docs/decisions/2026-08-07-evidence-labels.md
+// section 10.5); this is the S6 bump (docs/decisions/2026-09-20-warnings-vs-observations.md's
+// successor design record), not the first bump off v1.
+export const SCHEMA_VERSION = 3;
+
 function compareText(left, right) {
   return left < right ? -1 : left > right ? 1 : 0;
 }
@@ -109,6 +114,13 @@ export function sanitizeEvidence(value) {
   return recursivelySanitize(value);
 }
 
+// Thin, direct export of the walker below (S7): existing tests only exercised it
+// indirectly via the full writeArtifacts/run() path. sanitizeEvidence already had this
+// treatment; this gives validateArtifact the same direct unit-test surface.
+export function validateEvidence(value) {
+  return validateArtifact(value);
+}
+
 function validateArtifact(value) {
   if (typeof value === "string") {
     assertSanitizedMetadata(value);
@@ -127,12 +139,6 @@ function validateArtifact(value) {
     });
   }
   return value;
-}
-
-function withoutDiff(inventory) {
-  const metadata = { ...inventory.metadata };
-  delete metadata.diff;
-  return { ...inventory, metadata };
 }
 
 /**
@@ -175,6 +181,210 @@ export function bundleStatus(collectors) {
   return "complete";
 }
 
+const VALID_STATUSES = ["unavailable", "partial", "complete"];
+const REQUIRED_TOP_LEVEL_KEYS = ["schemaVersion", "status", "collectors", "aggregate", "policy"];
+const REQUIRED_COLLECTOR_NAMES = ["files", "git", "configuration", "delivery", "planning", "product"];
+const REQUIRED_ENVELOPE_KEYS = ["status", "records", "warnings", "observations", "metadata"];
+
+function shapeFailure(path, reason) {
+  throw new Error(`Bundle structure validation failed: ${path}: ${reason}`);
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+// Only the required keys are ever named in a failure message. An *unexpected* key is
+// reported by count alone -- it may be user/repository data (a data-derived map key, per
+// RI-KEY-SANITIZE), and echoing it here would defeat the point of validating before the
+// sanitize/redaction pass runs.
+function assertExactKeys(value, expectedKeys, path) {
+  if (!isPlainObject(value)) shapeFailure(path, "expected an object");
+  const expected = new Set(expectedKeys);
+  const actual = new Set(Object.keys(value));
+  const missing = expectedKeys.filter((key) => !actual.has(key));
+  if (missing.length > 0) shapeFailure(path, `missing required key(s): ${missing.join(", ")}`);
+  const extraCount = [...actual].filter((key) => !expected.has(key)).length;
+  if (extraCount > 0) shapeFailure(path, `contains ${extraCount} unexpected key(s)`);
+}
+
+function assertValidStatus(status, path) {
+  if (!VALID_STATUSES.includes(status)) {
+    shapeFailure(path, `expected one of ${VALID_STATUSES.join("/")}, got ${JSON.stringify(status)}`);
+  }
+}
+
+/**
+ * Light fail-closed structural guard (C7, D9): envelope-level key sets -- identical across
+ * all six collectors today -- plus a short, explicit list of named metadata keys real
+ * consumers depend on (the git diff subtree's `omitted` flag; the planning collector's
+ * `externalContext` object). Deliberately NOT a full per-collector metadata registry --
+ * the unavailable/normal metadata key sets differ per collector (see the S6 design record),
+ * and asserting an exact set here would be a second breaking change for no consumer benefit.
+ * Throws on the first violation found; never echoes an unexpected key's own name (see
+ * assertExactKeys). Called first thing in writeArtifacts, before any sanitizing or write.
+ */
+export function assertBundleShape(bundle) {
+  assertExactKeys(bundle, REQUIRED_TOP_LEVEL_KEYS, "bundle");
+
+  if (bundle.schemaVersion !== SCHEMA_VERSION) {
+    shapeFailure(
+      "bundle.schemaVersion",
+      `expected ${SCHEMA_VERSION}, got ${JSON.stringify(bundle.schemaVersion)}`,
+    );
+  }
+  assertValidStatus(bundle.status, "bundle.status");
+  assertExactKeys(bundle.collectors, REQUIRED_COLLECTOR_NAMES, "bundle.collectors");
+
+  let expectedWarnings = 0;
+  let expectedObservations = 0;
+
+  for (const name of REQUIRED_COLLECTOR_NAMES) {
+    const collector = bundle.collectors[name];
+    const path = `bundle.collectors.${name}`;
+    assertExactKeys(collector, REQUIRED_ENVELOPE_KEYS, path);
+    assertValidStatus(collector.status, `${path}.status`);
+
+    if (!Array.isArray(collector.records)) shapeFailure(`${path}.records`, "expected an array");
+
+    if (!Array.isArray(collector.warnings)) {
+      shapeFailure(`${path}.warnings`, "expected an array");
+    }
+    collector.warnings.forEach((warning, index) => {
+      if (typeof warning !== "string" || warning.length === 0) {
+        shapeFailure(`${path}.warnings[${index}]`, "expected a non-empty string");
+      }
+    });
+    expectedWarnings += collector.warnings.length;
+
+    if (!Array.isArray(collector.observations)) {
+      shapeFailure(`${path}.observations`, "expected an array");
+    }
+    collector.observations.forEach((observation, index) => {
+      const observationPath = `${path}.observations[${index}]`;
+      if (!isPlainObject(observation)) shapeFailure(observationPath, "expected an object");
+      if (typeof observation.id !== "string" || observation.id.length === 0) {
+        shapeFailure(`${observationPath}.id`, "expected a non-empty string");
+      }
+      if (typeof observation.message !== "string" || observation.message.length === 0) {
+        shapeFailure(`${observationPath}.message`, "expected a non-empty string");
+      }
+    });
+    expectedObservations += collector.observations.length;
+
+    if (!isPlainObject(collector.metadata)) {
+      shapeFailure(`${path}.metadata`, "expected an object");
+    } else if (!("evidenceLabels" in collector.metadata)) {
+      shapeFailure(`${path}.metadata.evidenceLabels`, "expected evidenceLabels to be present");
+    }
+  }
+
+  // Named metadata keys real consumers depend on -- see the function doc comment.
+  const gitDiff = bundle.collectors.git.metadata.diff;
+  if (!isPlainObject(gitDiff) || typeof gitDiff.omitted !== "boolean") {
+    shapeFailure(
+      "bundle.collectors.git.metadata.diff",
+      "expected an object with a boolean omitted field",
+    );
+  }
+  const externalContext = bundle.collectors.planning.metadata.externalContext;
+  if (!isPlainObject(externalContext)) {
+    shapeFailure("bundle.collectors.planning.metadata.externalContext", "expected an object");
+  }
+
+  if (!isPlainObject(bundle.aggregate)) {
+    shapeFailure("bundle.aggregate", "expected an object");
+  } else {
+    if (!Array.isArray(bundle.aggregate.warnings) || bundle.aggregate.warnings.length !== expectedWarnings) {
+      shapeFailure(
+        "bundle.aggregate.warnings",
+        "count does not match the sum of every collector's own warnings",
+      );
+    }
+    if (
+      !Array.isArray(bundle.aggregate.observations) ||
+      bundle.aggregate.observations.length !== expectedObservations
+    ) {
+      shapeFailure(
+        "bundle.aggregate.observations",
+        "count does not match the sum of every collector's own observations",
+      );
+    }
+  }
+
+  if (!isPlainObject(bundle.policy)) {
+    shapeFailure("bundle.policy", "expected an object");
+  } else if (bundle.policy.rawDiffsIncluded !== false) {
+    shapeFailure(
+      "bundle.policy.rawDiffsIncluded",
+      "must always be false -- this tool never includes raw diff/patch content",
+    );
+  }
+
+  assertEvidenceLabelStructure(bundle, "bundle");
+}
+
+const EVIDENCE_LABEL_TOKENS = [
+  "observed_fact",
+  "documented_intent",
+  "mechanical_inference",
+  "unresolved",
+];
+
+/**
+ * §10.6's five deferred structural assertions, taken now that S6 lands (per §10.4 V1-3).
+ * Field names in `fields` are static strings written in collector source, never data read
+ * off disk (§5), so -- unlike an unexpected bundle-root key -- they are safe to name in a
+ * failure message.
+ */
+function assertEvidenceLabelStructure(value, path) {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertEvidenceLabelStructure(item, `${path}[${index}]`));
+    return;
+  }
+  if (!isPlainObject(value)) return;
+
+  if ("evidenceLabels" in value) {
+    const labelsPath = `${path}.evidenceLabels`;
+    const labels = value.evidenceLabels;
+    assertExactKeys(labels, ["default", "fields"], labelsPath);
+
+    if (!EVIDENCE_LABEL_TOKENS.includes(labels.default)) {
+      shapeFailure(
+        `${labelsPath}.default`,
+        `expected one of ${EVIDENCE_LABEL_TOKENS.join("/")}, got ${JSON.stringify(labels.default)}`,
+      );
+    }
+
+    if (!isPlainObject(labels.fields)) {
+      shapeFailure(`${labelsPath}.fields`, "expected an object");
+    } else {
+      for (const [fieldKey, fieldValue] of Object.entries(labels.fields)) {
+        if (fieldKey === "evidenceLabels") {
+          shapeFailure(`${labelsPath}.fields`, "must not name evidenceLabels itself");
+        }
+        if (!(fieldKey in value)) {
+          shapeFailure(
+            `${labelsPath}.fields`,
+            `names "${fieldKey}", which is not a key on the same object`,
+          );
+        }
+        if (!EVIDENCE_LABEL_TOKENS.includes(fieldValue)) {
+          shapeFailure(
+            `${labelsPath}.fields.${fieldKey}`,
+            `expected one of ${EVIDENCE_LABEL_TOKENS.join("/")}, got ${JSON.stringify(fieldValue)}`,
+          );
+        }
+      }
+    }
+  }
+
+  for (const [key, nested] of Object.entries(value)) {
+    if (key === "evidenceLabels") continue;
+    assertEvidenceLabelStructure(nested, `${path}.${key}`);
+  }
+}
+
 export function composeEvidence({ root = process.cwd(), includeDiff = false, baseRef } = {}) {
   const repositoryRoot = resolve(root);
   const collectors = {
@@ -186,10 +396,8 @@ export function composeEvidence({ root = process.cwd(), includeDiff = false, bas
     product: collectProduct({ root: repositoryRoot }),
   };
 
-  if (!includeDiff) collectors.git = withoutDiff(collectors.git);
-
   return {
-    schemaVersion: 2,
+    schemaVersion: SCHEMA_VERSION,
     status: bundleStatus(collectors),
     collectors,
     aggregate: buildAggregate(collectors),
@@ -292,6 +500,11 @@ export function writeArtifacts({
   sanitizer = sanitizeEvidence,
 } = {}) {
   if (!outputDirectory) throw new Error("An output directory is required.");
+  // Fail closed on the raw bundle before anything else touches it -- before rendering the
+  // summary, before sanitizing, before the write-gate validator, and before
+  // ensureWritableTarget's rmSync (--overwrite must never delete existing artifacts in
+  // exchange for writing nothing back). See the S6 design record's owner decision 3.4.
+  assertBundleShape(bundle);
   assertDedicatedOutputDirectory(root, outputDirectory);
   const artifacts = [
     { path: resolve(outputDirectory, BUNDLE_FILENAME), value: sanitizer(bundle) },

@@ -181,6 +181,32 @@ describe("repository intelligence configuration", () => {
     }
   });
 
+  it("never scans a source-extension file that also looks like a dotenv variant (S7)", () => {
+    const { root } = createFixture();
+    const sentinelName = "PRIVATE_ENV_SHOULD_NOT_APPEAR_EITHER";
+    const sentinelValue = ["fixture", "-dotenv-source", "-secret"].join("");
+
+    // ".env.ts" passes the SOURCE_EXTENSIONS filter (.ts). Verified this collector was
+    // never actually vulnerable here -- shouldSkipEnvironmentScan's isExcludedRepositoryPath
+    // check already calls isEnvironmentFile, unlike the product and delivery collectors,
+    // which had a real gap (fixed in this same slice). Kept as regression coverage locking
+    // in that pre-existing protection rather than as evidence of a new fix.
+    writeFixtureFile(
+      root,
+      "api/.env.ts",
+      `export const ${sentinelName} = "${sentinelValue}";\nconst token = process.env.${sentinelName};\n`,
+    );
+    writeFixtureFile(root, "api/server.ts", "const real = process.env.REAL_TOKEN;\n");
+
+    const result = collectConfiguration({ root });
+    const serialized = JSON.stringify(result);
+
+    expect(result.metadata.environmentVariables.map((record) => record.name)).not.toContain(sentinelName);
+    expect(result.metadata.environmentVariables.map((record) => record.name)).toContain("REAL_TOKEN");
+    expect(serialized).not.toContain(sentinelValue);
+    expect(serialized).not.toContain(sentinelName);
+  });
+
   it("collects environment names and references without values or private files", () => {
     const { root } = createFixture();
     const privateValue = ["fixture", "-private", "-value"].join("");
@@ -912,6 +938,32 @@ describe("repository intelligence delivery", () => {
       default: "mechanical_inference",
       fields: { workflowCount: "observed_fact" },
     });
+  });
+
+  it("never reads a workflow file that also looks like a dotenv variant (S7)", () => {
+    const { root } = createFixture();
+    const sentinelValue = ["fixture", "-workflow-dotenv", "-secret"].join("");
+
+    // ".env.yml" passes workflowPaths' /\.(?:yaml|yml)$/ filter and, before this fix,
+    // would have been read and parsed like any other workflow file.
+    writeFixtureFile(
+      root,
+      ".github/workflows/.env.yml",
+      ["name: Should Never Be Read", "on: push", "jobs:", `  x:`, `    env:`, `      LEAKED: ${sentinelValue}`].join("\n"),
+    );
+    writeFixtureFile(
+      root,
+      ".github/workflows/real.yml",
+      ["name: Real Workflow", "on: push", "jobs:", "  build:", "    runs-on: ubuntu-latest"].join("\n"),
+    );
+
+    const result = collectDelivery({ root });
+    const serialized = JSON.stringify(result);
+
+    expect(result.records.map((record) => record.path)).not.toContain(".github/workflows/.env.yml");
+    expect(result.records.map((record) => record.path)).toContain(".github/workflows/real.yml");
+    expect(serialized).not.toContain(sentinelValue);
+    expect(serialized).not.toContain("Should Never Be Read");
   });
 
   it("uses env-block indentation instead of unrelated workflow mappings", () => {
