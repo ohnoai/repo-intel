@@ -935,7 +935,7 @@ the per-collector tests in §10.7 instead.
   `export.mjs`'s `validateArtifact`. Take it when S6 lands, or sooner; it does not require
   the rest of S6 (the "reject unknown top-level shape" and always-present-`diff` parts).
 
-  **Settled by S6 (2026-09-22):** taken as part of S6, not sooner — folded into
+  **Settled by S6 (2026-09-22):** taken as part of S6, not sooner, and folded into
   `assertBundleShape` alongside the rest of the guard rather than added standalone to
   `validateArtifact`. Live-probed against real output from this repository and
   `sliceboard`: zero violations. See
@@ -999,7 +999,7 @@ structural, not per-field.
    this draft.
 
    **Settled by S6 (2026-09-22):** kept the blanket `unresolved` choice, but `omitted`
-   itself is now labeled `observed_fact` even within that blanket — it is a direct read of
+   itself is now labeled `observed_fact` even within that blanket, because it is a direct read of
    the collector's own control flow, not a guess, so the concern above no longer fully
    applies. See `docs/decisions/2026-09-22-schema-v3-structural-guard.md` §2.3 and owner
    decision 3.2.

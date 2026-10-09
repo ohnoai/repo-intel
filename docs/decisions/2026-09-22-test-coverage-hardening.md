@@ -34,12 +34,12 @@ filters both `authorityDocuments` and `requiredAuthorityDocuments` through
 `isPrivateEnvironmentFile`, pushing a warning (not silence, not an observation) when a
 declared path is refused - the repository's own configuration asked for something the tool
 won't honor, which is "the repository's own configuration was not fully honored" under S3's
-§2.4 table. Its directory scan silently skips a private-looking filename it happens to
+§2.4 table. Its directory scan quietly skips a private-looking filename it happens to
 encounter, matching every other silent skip in that walker. The same class of gap, reached by
 extension matching instead of config declaration, existed in `lib/collect-product.mjs`'s
 source scan (`SOURCE_EXTENSIONS` matches `.ts`/`.js`/etc regardless of the rest of the
 filename, so `src/.env.ts` would have been scanned) and `lib/collect-delivery.mjs`'s workflow
-listing (`.github/workflows/.env.yml` would have been read) - both fixed the same way, silently.
+listing (`.github/workflows/.env.yml` would have been read) - both fixed the same way, quietly.
 `lib/collect-config.mjs` was checked and found **already safe**: its
 `shouldSkipEnvironmentScan` already calls `isExcludedRepositoryPath`, which already calls
 `isEnvironmentFile` - confirmed by writing the equivalent sentinel test first and finding it
@@ -50,10 +50,10 @@ passed even with the other two fixes reverted.
 through to the real implementation - not an injected reader, because an injected seam can
 always be bypassed by a future direct import and still pass. A fixture plants a private file
 at every real gap above, plus a real `.env.example` as a positive control: it SHOULD be read,
-proving the mock actually intercepts rather than silently no-op'ing (the same lesson as S3
+proving the mock actually intercepts rather than quietly no-op'ing (the same lesson as S3
 step 7's own rollup-test fixture). Runs against both a non-Git and a Git-initialized fixture,
 both `includeDiff` values. A closing static check confirms every `lib/*.mjs`/`export.mjs` fs
-import is exactly `"node:fs"`, so the suite's coverage claim can't go silently stale.
+import is exactly `"node:fs"`, so the suite's coverage claim can't go quietly stale.
 
 **2.4 Sanitizer drift.** `lib/sanitize.mjs` exports `HIGH_CONFIDENCE_PATTERN_IDS` (derived
 from the patterns' own `.id` fields). `sanitize.test.mjs` gained a coverage test (the fixture
@@ -146,7 +146,7 @@ gitignore advice-text fix (`INTEL-10`).
 ## 7. Risks
 
 Mocking a Node builtin under vitest needs the positive control to be trusted - if
-interception silently stopped working, this suite would pass without proving anything; the
+interception quietly stopped working, this suite would pass without proving anything; the
 static "every fs import is `node:fs`" check and the positive control together are the
 mitigation. The private-file predicate may over-match rare legitimate filenames (`.envrc`,
 etc.) - acceptable, since the failure mode is under-collection, never a leak.
