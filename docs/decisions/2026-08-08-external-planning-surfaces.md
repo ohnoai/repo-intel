@@ -10,7 +10,7 @@
 ## 1. Context
 
 On 2026-08-08 the decision was made to run a self-hosted Vikunja instance as the
-primary task system, and to adopt `veans` — Vikunja's agent CLI — for repository
+primary task system, and to adopt `veans` (Vikunja's agent CLI) for repository
 work. `veans init` writes a committed `.veans.yml` at a repo root and moves that
 repo's execution tracking into a Vikunja project with five fixed Kanban buckets.
 
@@ -47,8 +47,8 @@ look."*
 
 ## 4. The obvious solution is wrong
 
-The obvious move — have the planning collector query the Vikunja API and pull the
-project's tasks — breaks three properties stated in the first line of the README:
+The obvious move (have the planning collector query the Vikunja API and pull the
+project's tasks) breaks three properties stated in the first line of the README:
 **deterministic, offline, read-only**. A network read is none of the first two.
 Bundle output would vary by when it ran and whether the server was reachable.
 
@@ -58,7 +58,7 @@ tool is, not merely unimplemented.
 
 ## 5. A shape that would not break anything
 
-`.veans.yml` is committed, sits at the repo root, and contains no secrets — server
+`.veans.yml` is committed, sits at the repo root, and contains no secrets: server
 URL, project id, project identifier, view id, the five bucket ids, and the bot's
 username and user id. The token lives in the OS keychain, never in the file.
 
@@ -86,8 +86,8 @@ Revisit when **both** are true:
 2. A bundle has been generated from a repo where planning genuinely spans both
    surfaces, and the gap has been observed rather than anticipated.
 
-Not before. If the split turns out differently in practice — if plans migrate too,
-or if `tasks/` survives alongside Vikunja — the problem changes shape and this
+Not before. If the split turns out differently in practice (if plans migrate too,
+or if `tasks/` survives alongside Vikunja), the problem changes shape and this
 note should be rewritten rather than implemented.
 
 ## 7. Weakest points
@@ -104,14 +104,14 @@ note should be rewritten rather than implemented.
 
 ## 8. Addendum (2026-08-09): the human/agent-facing half is now solved, separately
 
-This note is about the **collector** — repo-intel silently under-reporting when a
+This note is about the **collector**: repo-intel quietly under-reporting when a
 repo's tasks live in Vikunja instead of `docs/tasks/`. That gap is still open; the
 trigger condition in §6 hasn't fired.
 
 A related but distinct gap has been closed, independently of this document:
 SliceBoard's `AGENTS.md` now states, in its own words, how an agent reconciles
 `veans prime`'s "use veans instead of TodoWrite" instruction against the repo's own
-`docs/tasks/` convention — the two looked contradictory to at least one outside
+`docs/tasks/` convention; the two looked contradictory to at least one outside
 audit before this landed. The resolution is the same split predicted in §1
 (`veans`/Vikunja = live execution state, `docs/tasks/` = durable record), stated as
 a self-contained paragraph in AGENTS.md itself, not a pointer to any personal config:
@@ -124,7 +124,7 @@ a self-contained paragraph in AGENTS.md itself, not a pointer to any personal co
 this is the template to reuse: adapt SliceBoard's `AGENTS.md` "Task records" section
 (the two-system framing, the claim/review/never-close-yourself workflow, the
 bare-number-vs-database-id trap, the pulled-out "state in Vikunja, record in the
-repo" line) rather than re-deriving it. This does not touch §6's trigger condition —
+repo" line) rather than re-deriving it. This does not touch §6's trigger condition (
 the collector still cannot see Vikunja-tracked work, and still shouldn't query it
-live (§4) — it only means a human/agent working in such a repo won't hit the
+live, §4); it only means a human/agent working in such a repo won't hit the
 ambiguity that prompted this addendum.

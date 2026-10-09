@@ -133,7 +133,7 @@ the complete mapping per collector and the design rationale.
 The exporter never reads `.env` values, never exports binary content or raw diffs, and redacts
 credentials, tokens, emails, and local absolute paths before anything is written. A final
 validation pass - independent of the redactor's own allowlist - is fatal on any residual sensitive
-content, so a redaction gap fails the write rather than silently shipping. Full design rationale in
+content, so a redaction gap fails the write rather than quietly shipping. Full design rationale in
 [`docs/02-history-and-decisions.md`](docs/02-history-and-decisions.md).
 
 ## Status
