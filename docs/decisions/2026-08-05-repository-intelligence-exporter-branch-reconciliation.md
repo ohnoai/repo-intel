@@ -16,7 +16,7 @@ Reconciled the branch by merging `origin/main` into
 remote-tracking branch 'origin/main' into feat/repository-intelligence-exporter").
 
 The merge surfaced one real conflict: `main` had independently added a fact-checker
-team to `opencode.json`, silently clashing with this branch's own Reconcile team
+team to `opencode.json`, quietly clashing with this branch's own Reconcile team
 definition in the same file. Follow-up commit `674127f` ("opencode.json: merge
 Reconcile team with main's fact-checker team after silent overwrite") resolved this
 by keeping both team definitions side by side in `opencode.json` rather than letting

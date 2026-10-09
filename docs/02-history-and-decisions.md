@@ -70,13 +70,13 @@ These are the durable decisions the target architecture is built on. Full specif
 - **Workflow evidence kept typed and separate:** environment-declaration vs environment-reference vs
  secret-reference vs shell-expansion. Flattening them lets a GitHub *secret* be reported as an
  *environment variable*.
-- **An explicit git diff-base contract.** Silently comparing a feature branch against its own upstream
+- **An explicit git diff-base contract.** Quietly comparing a feature branch against its own upstream
  produces an empty, misleading diff (see RI-GIT-BASE in `03-current-state.md`).
 - **One final composed-output validation boundary**, fatal on any finding - per-helper sanitize calls
  are not enough. The validator must actually cover what the redactor removes (this is where the
  current code is weakest; see the plan's contract C3).
 - **Fail-closed structural guard.** Unknown/unexpected bundle shape should fail validation, never
- silently pass through.
+ quietly pass through.
 
 ## What changed this session (2026-07-22)
 
