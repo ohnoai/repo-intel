@@ -7,9 +7,7 @@ coverage/
 # agent tooling
 .serena/
 .claude/settings.local.json
-.opencode/**
-!.opencode/plugin/
-!.opencode/plugin/veans-prime.ts
+.opencode/
 
 # squelch: estate config — local only on public repos (see ohnoai/squelch)
 .squelch.json

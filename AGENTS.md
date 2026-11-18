@@ -26,7 +26,7 @@ Claim a task before you start (`veans claim #N`), move it to **In Review** when 
 **never mark it Done yourself** - a human closes it once the work has actually landed. Config
 is `.veans.yml` at the root: committed, no secrets in it, the bot token lives in the OS
 keychain. Bot identity is `bot-repo-intel` against `tasks.ohnoai.xyz`. The `SessionStart`/`PreCompact` hooks that auto-run `veans prime` live in committed
-`.claude/settings.json` and `.opencode/plugin/veans-prime.ts` (same pattern as `.veans.yml`:
+`.claude/settings.json` (same pattern as `.veans.yml`:
 config committed, secrets in the OS keychain).
 
 Note that the task's project-relative identifier is not its database id. The JSON returns
